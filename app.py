@@ -11,6 +11,104 @@ import io
 # ==============================================================
 st.set_page_config(page_title="Mercadinho - Sistema", page_icon="🛒", layout="wide")
 
+# ==============================================================
+# CUSTOMIZAÇÃO VISUAL (CSS)
+# ==============================================================
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+}
+
+/* ---- Título principal com barrinha verde à esquerda ---- */
+h1 {
+    font-weight: 800 !important;
+    padding-left: 14px;
+    border-left: 6px solid #2E7D32;
+}
+h2, h3 { font-weight: 700 !important; }
+
+/* ---- Botões ---- */
+.stButton > button, .stFormSubmitButton > button, .stDownloadButton > button, .stLinkButton > a {
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    transition: all 0.15s ease-in-out;
+    border: 1px solid #2E7D32 !important;
+}
+.stButton > button[kind="primary"], .stFormSubmitButton > button[kind="primary"] {
+    background-color: #2E7D32 !important;
+    color: white !important;
+    box-shadow: 0 2px 6px rgba(46,125,50,0.35);
+}
+.stButton > button:hover, .stFormSubmitButton > button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(46,125,50,0.25);
+}
+
+/* ---- Cartões de métrica (KPIs) ---- */
+div[data-testid="stMetric"] {
+    background-color: #F1F8F4;
+    border: 1px solid #DCEDE0;
+    border-top: 4px solid #2E7D32;
+    border-radius: 12px;
+    padding: 14px 16px 10px 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+}
+div[data-testid="stMetricLabel"] { font-weight: 600 !important; }
+div[data-testid="stMetricValue"] { color: #1B5E20 !important; }
+
+/* ---- Sidebar ---- */
+section[data-testid="stSidebar"] {
+    background-color: #F1F8F4;
+    border-right: 1px solid #DCEDE0;
+}
+section[data-testid="stSidebar"] .stRadio label {
+    font-weight: 600;
+}
+
+/* ---- Abas (tabs) ---- */
+.stTabs [data-baseweb="tab"] {
+    font-weight: 600;
+    border-radius: 8px 8px 0 0;
+}
+.stTabs [aria-selected="true"] {
+    color: #2E7D32 !important;
+    border-bottom: 3px solid #2E7D32 !important;
+}
+
+/* ---- Expanders (cards de produto/cliente/pedido) ---- */
+div[data-testid="stExpander"] {
+    border: 1px solid #E0E0E0 !important;
+    border-radius: 10px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+div[data-testid="stExpander"] summary {
+    font-weight: 600;
+}
+
+/* ---- Inputs ---- */
+div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input,
+div[data-baseweb="select"] {
+    border-radius: 8px !important;
+}
+
+/* ---- Cartão de Login centralizado ---- */
+div[data-testid="stForm"] {
+    background-color: #FFFFFF;
+    border: 1px solid #E0E0E0;
+    border-radius: 16px;
+    padding: 28px 30px 10px 30px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.06);
+    max-width: 420px;
+}
+
+/* Oculta a mensagem "Press Enter to submit form" */
+div[data-testid="InputInstructions"] { display: none !important; }
+</style>
+""", unsafe_allow_html=True)
+
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
 
@@ -86,42 +184,45 @@ if 'logado' not in st.session_state:
 # 3. TELA DE LOGIN
 # ==============================================================
 if not st.session_state['logado']:
-    st.title("🛒 Login - Sistema Mercadinho")
+    col_login1, col_login2, col_login3 = st.columns([1, 1.3, 1])
+    with col_login2:
+        st.title("🛒 Login")
+        st.caption("Sistema Mercadinho")
 
-    with st.form("form_login"):
-        email_login = st.text_input("E-mail")
-        senha_login = st.text_input("Senha", type="password")
-        entrar = st.form_submit_button("Entrar")
+        with st.form("form_login"):
+            email_login = st.text_input("E-mail")
+            senha_login = st.text_input("Senha", type="password")
+            entrar = st.form_submit_button("Entrar", type="primary", use_container_width=True)
 
-    if entrar:
-        try:
-            resultado = supabase.table("usuarios").select(
-                "id, nome, senha_hash, perfil, empresa_id, ativo"
-            ).eq("email", email_login).execute()
+        if entrar:
+            try:
+                resultado = supabase.table("usuarios").select(
+                    "id, nome, senha_hash, perfil, empresa_id, ativo"
+                ).eq("email", email_login).execute()
 
-            if resultado.data:
-                usuario = resultado.data[0]
-                if not usuario['ativo']:
-                    mostrar_popup("Usuário bloqueado. Fale com o responsável.", tipo="erro")
-                elif usuario['senha_hash'] == senha_login:
-                    st.session_state.update({
-                        'logado': True,
-                        'perfil': usuario['perfil'],
-                        'empresa_id': usuario['empresa_id'],
-                        'usuario_id': usuario['id'],
-                        'nome_usuario': usuario['nome']
-                    })
-                    st.query_params.update({
-                        "uid": str(usuario['id']),
-                        "tk": gerar_token_sessao(usuario['id'], usuario['senha_hash'])
-                    })
-                    st.rerun()
+                if resultado.data:
+                    usuario = resultado.data[0]
+                    if not usuario['ativo']:
+                        mostrar_popup("Usuário bloqueado. Fale com o responsável.", tipo="erro")
+                    elif usuario['senha_hash'] == senha_login:
+                        st.session_state.update({
+                            'logado': True,
+                            'perfil': usuario['perfil'],
+                            'empresa_id': usuario['empresa_id'],
+                            'usuario_id': usuario['id'],
+                            'nome_usuario': usuario['nome']
+                        })
+                        st.query_params.update({
+                            "uid": str(usuario['id']),
+                            "tk": gerar_token_sessao(usuario['id'], usuario['senha_hash'])
+                        })
+                        st.rerun()
+                    else:
+                        mostrar_popup("Senha incorreta.", tipo="erro")
                 else:
-                    mostrar_popup("Senha incorreta.", tipo="erro")
-            else:
-                mostrar_popup("E-mail não encontrado.", tipo="erro")
-        except Exception as e:
-            mostrar_popup(f"Erro ao tentar logar: {e}", tipo="erro")
+                    mostrar_popup("E-mail não encontrado.", tipo="erro")
+            except Exception as e:
+                mostrar_popup(f"Erro ao tentar logar: {e}", tipo="erro")
 
     st.stop()
 

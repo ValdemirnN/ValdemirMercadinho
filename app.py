@@ -499,86 +499,39 @@ emp_id = st.session_state['empresa_id']
 usuario_id = st.session_state['usuario_id']
 nome_usuario = st.session_state['nome_usuario']
 
-perfil_atual = st.session_state['perfil']
-
-# ---- Perfis com acesso de gestão (tela cheia + valores sensíveis de caixa) ----
-PERFIS_GESTAO = ("dono", "gerente", "admin_geral")
-is_gestor = perfil_atual in PERFIS_GESTAO
-
 st.sidebar.markdown(f"### 👋 Olá, {nome_usuario}")
-st.sidebar.caption(f"Perfil: {perfil_atual.capitalize()}")
+st.sidebar.caption(f"Perfil: {st.session_state['perfil'].capitalize()}")
 st.sidebar.button("Sair / Desconectar", on_click=fazer_logout)
 st.sidebar.markdown("---")
 
-# ---- Visão segmentada por perfil ----
-# Operador: acesso apenas ao PDV e ao Fiado (Clientes)
-# Dono / Gerente / Admin geral: acesso completo a todas as telas
-if perfil_atual == "operador":
-    opcoes_menu = ["🧾 PDV", "💳 Fiado (Clientes)"]
-else:
-    opcoes_menu = ["🧾 PDV", "📦 Estoque", "🛒 Compras", "💳 Fiado (Clientes)", "💰 Financeiro", "📊 Dashboard"]
-    if perfil_atual == "admin_geral":
-        opcoes_menu = ["👑 Gestão de Assinantes"] + opcoes_menu
+opcoes_menu = ["🧾 PDV", "📦 Estoque", "🛒 Compras", "💳 Fiado (Clientes)", "💰 Financeiro", "📊 Dashboard"]
+if st.session_state['perfil'] == 'admin_geral':
+    opcoes_menu = ["👑 Gestão de Assinantes"] + opcoes_menu
 menu = st.sidebar.radio("Módulos", opcoes_menu)
 
 # ==============================================================
 # 5. CONTROLE DE CAIXA (compartilhado entre módulos)
 # ==============================================================
-TERMINAIS_PADRAO = ["Caixa 01", "Caixa 02", "Caixa 03", "Caixa 04"]
-
 def buscar_caixa_aberto():
     resultado = supabase.table("caixas").select("*").eq("empresa_id", emp_id) \
         .eq("operador_id", usuario_id).eq("status", "aberto").order("id", desc=True).limit(1).execute()
     return resultado.data[0] if resultado.data else None
 
-def buscar_caixa_aberto_por_terminal(terminal):
-    """Retorna o caixa aberto (de qualquer operador) que já está usando esse terminal, se houver."""
-    resultado = supabase.table("caixas").select("*, usuarios(nome)").eq("empresa_id", emp_id) \
-        .eq("terminal", terminal).eq("status", "aberto").order("id", desc=True).limit(1).execute()
-    return resultado.data[0] if resultado.data else None
-
 def tela_abrir_caixa():
     st.title("🔒 Abertura de Caixa")
     st.info("Você precisa abrir o caixa antes de registrar vendas.")
-
-    terminais_ocupados = supabase.table("caixas").select("terminal, usuarios(nome)") \
-        .eq("empresa_id", emp_id).eq("status", "aberto").execute().data or []
-    mapa_ocupados = {t['terminal']: (t['usuarios']['nome'] if t.get('usuarios') else "outro operador") for t in terminais_ocupados if t.get('terminal')}
-
-    if mapa_ocupados:
-        st.caption("Terminais já em uso agora: " + ", ".join(f"**{t}** ({op})" for t, op in mapa_ocupados.items()))
-
     with st.form("form_abrir_caixa"):
-        opcoes_terminal = TERMINAIS_PADRAO + ["Outro (digitar)"]
-        terminal_escolhido = st.selectbox("Terminal / Caixa físico", opcoes_terminal)
-        terminal_customizado = ""
-        if terminal_escolhido == "Outro (digitar)":
-            terminal_customizado = st.text_input("Nome do terminal")
         valor_abertura = st.number_input("Valor inicial na gaveta (troco)", min_value=0.0, step=5.0, value=0.0, format="%.2f")
         abrir = st.form_submit_button("🔓 Abrir Caixa")
-
     if abrir:
-        terminal_final = terminal_customizado.strip() if terminal_escolhido == "Outro (digitar)" else terminal_escolhido
-        if not terminal_final:
-            mostrar_popup("Informe o nome do terminal.", tipo="erro")
-        elif buscar_caixa_aberto():
-            # já foi validado antes de chamar esta tela, mas protege contra duplo clique / condição de corrida
-            mostrar_popup("Você já tem um caixa aberto.", tipo="erro")
-        else:
-            caixa_no_terminal = buscar_caixa_aberto_por_terminal(terminal_final)
-            if caixa_no_terminal:
-                nome_op_ocupando = caixa_no_terminal['usuarios']['nome'] if caixa_no_terminal.get('usuarios') else "outro operador"
-                mostrar_popup(f"O terminal '{terminal_final}' já está em uso por {nome_op_ocupando}. Escolha outro terminal.", tipo="erro")
-            else:
-                supabase.table("caixas").insert({
-                    "empresa_id": emp_id,
-                    "operador_id": usuario_id,
-                    "terminal": terminal_final,
-                    "valor_abertura": valor_abertura,
-                    "status": "aberto"
-                }).execute()
-                mostrar_popup(f"CAIXA ABERTO COM SUCESSO NO {terminal_final}!")
-                st.rerun()
+        supabase.table("caixas").insert({
+            "empresa_id": emp_id,
+            "operador_id": usuario_id,
+            "valor_abertura": valor_abertura,
+            "status": "aberto"
+        }).execute()
+        mostrar_popup("CAIXA ABERTO COM SUCESSO!")
+        st.rerun()
 
 def calcular_totais_caixa(caixa):
     vendas_caixa = supabase.table("vendas").select("valor_total, forma_pagamento, status") \
@@ -597,18 +550,13 @@ def calcular_totais_caixa(caixa):
     }
 
 def widget_status_caixa(caixa):
-
-    titulo_expander = f"💵 Caixa Aberto — {caixa.get('terminal') or 'Terminal não informado'}"
-    with st.sidebar.expander(titulo_expander, expanded=False):
+    
+    with st.sidebar.expander("💵 Caixa Aberto", expanded=False):
         totais = calcular_totais_caixa(caixa)
-        st.write(f"Terminal: **{caixa.get('terminal') or '-'}**")
         st.write(f"Abertura: R$ {formatar_moeda(caixa['valor_abertura'])}")
         st.write(f"Vendas: {totais['qtd_vendas']} (R$ {formatar_moeda(totais['total_geral'])})")
         st.write(f"Sangrias: R$ {formatar_moeda(totais['total_sangrias'])}")
-
-        # ---- Fechamento "cego": operador não vê o valor esperado, só o gestor ----
-        if is_gestor:
-            st.write(f"**Esperado na gaveta: R$ {formatar_moeda(totais['valor_esperado_gaveta'])}**")
+        st.write(f"**Esperado na gaveta: R$ {formatar_moeda(totais['valor_esperado_gaveta'])}**")
 
         st.markdown("---")
         st.caption("Registrar sangria (retirada de dinheiro)")
@@ -626,8 +574,6 @@ def widget_status_caixa(caixa):
 
         st.markdown("---")
         st.caption("Fechar caixa")
-        if not is_gestor:
-            st.caption("Conte o dinheiro da gaveta e informe o valor total abaixo.")
         valor_fechamento_informado = st.number_input("Valor contado na gaveta", min_value=0.0, step=5.0, format="%.2f", key="valor_fechamento_sidebar")
         if st.button("🔒 Fechar Caixa", key="btn_fechar_caixa_sidebar"):
             diferenca = valor_fechamento_informado - totais['valor_esperado_gaveta']
@@ -638,32 +584,21 @@ def widget_status_caixa(caixa):
                 "diferenca": diferenca,
                 "data_fechamento": datetime.now().isoformat()
             }).eq("id", caixa['id']).execute()
-            if is_gestor:
-                # Gestor vê o resultado da conferência na hora
-                if abs(diferenca) < 0.01:
-                    mostrar_popup("CAIXA FECHADO! Bateu certinho. 🎉")
-                elif diferenca > 0:
-                    mostrar_popup(f"Caixa fechado. Sobrou R$ {formatar_moeda(diferenca)} a mais na gaveta.")
-                else:
-                    mostrar_popup(f"Caixa fechado. Faltou R$ {formatar_moeda(abs(diferenca))} na gaveta.", tipo="erro")
+            if abs(diferenca) < 0.01:
+                mostrar_popup("CAIXA FECHADO! Bateu certinho. 🎉")
+            elif diferenca > 0:
+                mostrar_popup(f"Caixa fechado. Sobrou R$ {formatar_moeda(diferenca)} a mais na gaveta.")
             else:
-                # Fechamento cego: operador não sabe se bateu, sobrou ou faltou
-                mostrar_popup("CAIXA FECHADO! Valor contado registrado com sucesso.")
+                mostrar_popup(f"Caixa fechado. Faltou R$ {formatar_moeda(abs(diferenca))} na gaveta.", tipo="erro")
             st.rerun()
             
 def tela_historico_caixas():
-
+    
     st.title("📜 Histórico de Caixas")
-    if is_gestor:
-        st.caption("Todos os caixas abertos e fechados: quem operou, quanto entrou e o lucro estimado.")
-    else:
-        st.caption("Seus caixas abertos e fechados. O detalhe de sobra/falta é visível apenas para a gestão.")
+    st.caption("Todos os caixas abertos e fechados: quem operou, quanto entrou e o lucro estimado.")
 
-    query_caixas = supabase.table("caixas").select("*, usuarios(nome)").eq("empresa_id", emp_id)
-    if not is_gestor:
-        # Operador só enxerga o histórico dos próprios caixas
-        query_caixas = query_caixas.eq("operador_id", usuario_id)
-    caixas_resp = query_caixas.order("id", desc=True).execute()
+    caixas_resp = supabase.table("caixas").select("*, usuarios(nome)") \
+        .eq("empresa_id", emp_id).order("id", desc=True).execute()
     lista_caixas = caixas_resp.data or []
 
     if not lista_caixas:
@@ -674,7 +609,6 @@ def tela_historico_caixas():
         nome_operador = caixa['usuarios']['nome'] if caixa.get('usuarios') else "Operador desconhecido"
         status_aberto = caixa['status'] == 'aberto'
         icone_status = "🟢 Aberto" if status_aberto else "🔴 Fechado"
-        terminal_caixa = caixa.get('terminal') or "-"
 
         vendas_caixa_resp = supabase.table("vendas").select("id, valor_total, forma_pagamento") \
             .eq("caixa_id", caixa['id']).eq("status", "concluida").execute()
@@ -700,10 +634,9 @@ def tela_historico_caixas():
         total_dinheiro = sum(float(v['valor_total']) for v in vendas_caixa if v['forma_pagamento'] == 'dinheiro')
         valor_esperado_gaveta = valor_abertura + total_dinheiro - total_sangrias
 
-        titulo = f"{icone_status} — 🖥️ {terminal_caixa} — 👤 {nome_operador} — Abertura R$ {formatar_moeda(valor_abertura)} — Vendeu R$ {formatar_moeda(total_vendido)}"
+        titulo = f"{icone_status} — 👤 {nome_operador} — Abertura R$ {formatar_moeda(valor_abertura)} — Vendeu R$ {formatar_moeda(total_vendido)}"
 
         with st.expander(titulo):
-            st.write(f"**Terminal:** {terminal_caixa}")
             col1, col2, col3, col4, col5 = st.columns(5)
             col1.metric("👤 Operador", nome_operador)
             col2.metric("💰 Abertura", f"R$ {formatar_moeda(valor_abertura)}")
@@ -711,31 +644,22 @@ def tela_historico_caixas():
             col4.metric("✨ Lucro Estimado", f"R$ {formatar_moeda(lucro_caixa)}")
             col5.metric("📤 Sangrias", f"R$ {formatar_moeda(total_sangrias)}")
 
-            # ---- Fechamento cego: só a gestão vê o esperado/diferença ----
-            if is_gestor:
-                if status_aberto:
-                    st.info(f"💵 Esperado na gaveta agora: R$ {formatar_moeda(valor_esperado_gaveta)}")
-                else:
-                    col_f1, col_f2, col_f3 = st.columns(3)
-                    col_f1.metric("🧮 Esperado no Fechamento", f"R$ {formatar_moeda(caixa.get('valor_fechamento_calculado') or 0)}")
-                    col_f2.metric("🔢 Contado no Fechamento", f"R$ {formatar_moeda(caixa.get('valor_fechamento_informado') or 0)}")
-                    diferenca = float(caixa.get('diferenca') or 0)
-                    col_f3.metric(
-                        "⚖️ Diferença", f"R$ {formatar_moeda(diferenca)}",
-                        delta="Bateu certinho" if abs(diferenca) < 0.01 else ("Sobrou" if diferenca > 0 else "Faltou"),
-                        delta_color="normal" if diferenca >= 0 else "inverse"
-                    )
-                    if caixa.get('data_fechamento'):
-                        try:
-                            dt_fech = datetime.fromisoformat(caixa['data_fechamento'].replace("Z", "+00:00"))
-                            st.caption(f"🗓️ Fechado em: {dt_fech.strftime('%d/%m/%Y %H:%M')}")
-                        except Exception:
-                            pass
+            if status_aberto:
+                st.info(f"💵 Esperado na gaveta agora: R$ {formatar_moeda(valor_esperado_gaveta)}")
             else:
-                if not status_aberto and caixa.get('data_fechamento'):
+                col_f1, col_f2, col_f3 = st.columns(3)
+                col_f1.metric("🧮 Esperado no Fechamento", f"R$ {formatar_moeda(caixa.get('valor_fechamento_calculado') or 0)}")
+                col_f2.metric("🔢 Contado no Fechamento", f"R$ {formatar_moeda(caixa.get('valor_fechamento_informado') or 0)}")
+                diferenca = float(caixa.get('diferenca') or 0)
+                col_f3.metric(
+                    "⚖️ Diferença", f"R$ {formatar_moeda(diferenca)}",
+                    delta="Bateu certinho" if abs(diferenca) < 0.01 else ("Sobrou" if diferenca > 0 else "Faltou"),
+                    delta_color="normal" if diferenca >= 0 else "inverse"
+                )
+                if caixa.get('data_fechamento'):
                     try:
                         dt_fech = datetime.fromisoformat(caixa['data_fechamento'].replace("Z", "+00:00"))
-                        st.caption(f"🗓️ Fechado em: {dt_fech.strftime('%d/%m/%Y %H:%M')} — Valor contado: R$ {formatar_moeda(caixa.get('valor_fechamento_informado') or 0)}")
+                        st.caption(f"🗓️ Fechado em: {dt_fech.strftime('%d/%m/%Y %H:%M')}")
                     except Exception:
                         pass
 
@@ -1830,67 +1754,6 @@ def tela_dashboard():
             st.plotly_chart(fig_top, use_container_width=True)
         else:
             st.info("Sem vendas suficientes para ranking ainda.")
-
-    st.markdown("---")
-    st.subheader("🏆 Funcionário do Mês")
-    st.caption("Ranking por total vendido e quantidade de vendas no mês vigente.")
-
-    if not vendas_mes:
-        st.info("Ainda não há vendas neste mês para gerar o ranking.")
-    else:
-        operadores_resp = supabase.table("usuarios").select("id, nome").eq("empresa_id", emp_id).execute()
-        mapa_nomes_operador = {u['id']: u['nome'] for u in (operadores_resp.data or [])}
-
-        # vendas_mes não tem operador_id no select original do dashboard; buscamos novamente incluindo o campo
-        vendas_mes_operador_resp = supabase.table("vendas").select("id, valor_total, operador_id, criado_em") \
-            .eq("empresa_id", emp_id).eq("status", "concluida").execute()
-        vendas_mes_com_operador = [v for v in (vendas_mes_operador_resp.data or []) if _no_mes_atual(v['criado_em'])]
-
-        desempenho_operador = {}
-        for v in vendas_mes_com_operador:
-            op_id = v.get('operador_id')
-            if op_id is None:
-                continue
-            if op_id not in desempenho_operador:
-                desempenho_operador[op_id] = {"total_vendido": 0.0, "qtd_vendas": 0}
-            desempenho_operador[op_id]["total_vendido"] += float(v['valor_total'])
-            desempenho_operador[op_id]["qtd_vendas"] += 1
-
-        if not desempenho_operador:
-            st.info("Ainda não há vendas com operador identificado neste mês.")
-        else:
-            ranking = sorted(
-                [
-                    {"operador_id": op_id, "nome": mapa_nomes_operador.get(op_id, f"Operador #{op_id}"), **dados}
-                    for op_id, dados in desempenho_operador.items()
-                ],
-                key=lambda x: x['total_vendido'], reverse=True
-            )
-
-            medalhas = ["🥇", "🥈", "🥉"]
-            col_pod1, col_pod2, col_pod3 = st.columns(3)
-            colunas_podio = [col_pod1, col_pod2, col_pod3]
-            for i in range(min(3, len(ranking))):
-                colunas_podio[i].metric(
-                    f"{medalhas[i]} {ranking[i]['nome']}",
-                    f"R$ {formatar_moeda(ranking[i]['total_vendido'])}",
-                    delta=f"{ranking[i]['qtd_vendas']} venda(s)"
-                )
-
-            if len(ranking) > 3:
-                with st.expander(f"Ver ranking completo ({len(ranking)} operador(es))"):
-                    for pos, r in enumerate(ranking[3:], start=4):
-                        st.write(f"{pos}º — **{r['nome']}** — R$ {formatar_moeda(r['total_vendido'])} ({r['qtd_vendas']} venda(s))")
-
-            df_ranking = pd.DataFrame([
-                {"Operador": r['nome'], "Total Vendido": r['total_vendido']} for r in ranking
-            ]).sort_values("Total Vendido", ascending=True)
-            fig_ranking = px.bar(
-                df_ranking, x="Total Vendido", y="Operador", orientation='h',
-                template="plotly_dark", color_discrete_sequence=["#3B82F6"]
-            )
-            fig_ranking.update_layout(showlegend=False, margin=dict(t=10, b=0, l=0, r=0), xaxis=dict(title=""), yaxis=dict(title=""))
-            st.plotly_chart(fig_ranking, use_container_width=True)
 
     st.markdown("---")
     st.subheader("📦 Próximos Pedidos Aguardando Chegada")

@@ -550,6 +550,7 @@ def calcular_totais_caixa(caixa):
     }
 
 def widget_status_caixa(caixa):
+    
     with st.sidebar.expander("💵 Caixa Aberto", expanded=False):
         totais = calcular_totais_caixa(caixa)
         st.write(f"Abertura: R$ {formatar_moeda(caixa['valor_abertura'])}")
@@ -590,7 +591,9 @@ def widget_status_caixa(caixa):
             else:
                 mostrar_popup(f"Caixa fechado. Faltou R$ {formatar_moeda(abs(diferenca))} na gaveta.", tipo="erro")
             st.rerun()
+            
 def tela_historico_caixas():
+    
     st.title("📜 Histórico de Caixas")
     st.caption("Todos os caixas abertos e fechados: quem operou, quanto entrou e o lucro estimado.")
 

@@ -468,29 +468,28 @@ if not st.session_state['logado']:
                         if plano_padrao is not None and not plano_padrao.data:
                             mostrar_popup("Nenhum plano cadastrado no banco de dados. Rode a migração de assinaturas.", tipo="erro")
                         elif plano_padrao is not None:
-    try:
-        nova_empresa = supabase.table("empresas").insert({"nome_fantasia": nome_empresa_cadastro}).execute()
-        empresa_id_criada = nova_empresa.data[0]['id']
-        hoje_cadastro = datetime.now().strftime("%Y-%m-%d")
-        supabase.table("assinaturas").insert({
-            "empresa_id": empresa_id_criada, "plano_id": plano_padrao.data[0]['id'],
-            "data_inicio": hoje_cadastro, "data_vencimento": hoje_cadastro
-        }).execute()
-        token_confirmacao_novo = secrets.token_urlsafe(24)
-        supabase.table("usuarios").insert({
-            "empresa_id": empresa_id_criada, "nome": nome_usuario_cadastro,
-            "email": email_cadastro, "senha_hash": senha_cadastro, "perfil": "dono",
-            "ativo": False, "email_confirmado": False, "token_confirmacao": token_confirmacao_novo
-        }).execute()
+                            try:
+                                nova_empresa = supabase.table("empresas").insert({"nome_fantasia": nome_empresa_cadastro}).execute()
+                                empresa_id_criada = nova_empresa.data[0]['id']
+                                hoje_cadastro = datetime.now().strftime("%Y-%m-%d")
+                                supabase.table("assinaturas").insert({
+                                    "empresa_id": empresa_id_criada, "plano_id": plano_padrao.data[0]['id'],
+                                    "data_inicio": hoje_cadastro, "data_vencimento": hoje_cadastro
+                                }).execute()
+                                token_confirmacao_novo = secrets.token_urlsafe(24)
+                                supabase.table("usuarios").insert({
+                                    "empresa_id": empresa_id_criada, "nome": nome_usuario_cadastro,
+                                    "email": email_cadastro, "senha_hash": senha_cadastro, "perfil": "dono",
+                                    "ativo": False, "email_confirmado": False, "token_confirmacao": token_confirmacao_novo
+                                }).execute()
 
-        email_enviado = enviar_email_confirmacao(email_cadastro, nome_usuario_cadastro, token_confirmacao_novo)
-        if email_enviado:
-            mostrar_popup("Conta criada! Enviamos um e-mail de confirmação — clique no link para prosseguir com o pagamento.")
-        else:
-            mostrar_popup("Conta criada, mas houve falha ao enviar o e-mail. Veja o erro acima e verifique as credenciais SMTP.", tipo="erro")
-    except Exception as e_criar:
-        mostrar_popup(f"Erro ao criar conta: {e_criar}", tipo="erro")
-
+                                email_enviado = enviar_email_confirmacao(email_cadastro, nome_usuario_cadastro, token_confirmacao_novo)
+                                if email_enviado:
+                                    mostrar_popup("Conta criada! Enviamos um e-mail de confirmação — clique no link para prosseguir com o pagamento.")
+                                else:
+                                    mostrar_popup("Conta criada, mas houve falha ao enviar o e-mail. Veja o erro acima e verifique as credenciais SMTP.", tipo="erro")
+                            except Exception as e_criar:
+                                mostrar_popup(f"Erro ao criar conta: {e_criar}", tipo="erro")
     st.stop()
 
 # ==============================================================

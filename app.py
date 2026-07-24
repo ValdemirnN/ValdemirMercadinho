@@ -1833,11 +1833,15 @@ if menu == "👑 Gestão de Assinantes":
     tela_gestao_assinantes()
 
 elif menu == "🧾 PDV":
-    caixa_atual = buscar_caixa_aberto()
-    if not caixa_atual:
-        tela_abrir_caixa()
-    else:
-        tela_pdv(caixa_atual)
+    tab_venda, tab_historico = st.tabs(["🧾 Venda", "📜 Histórico de Caixas"])
+    with tab_venda:
+        caixa_atual = buscar_caixa_aberto()
+        if not caixa_atual:
+            tela_abrir_caixa()
+        else:
+            tela_pdv(caixa_atual)
+    with tab_historico:
+        tela_historico_caixas()
 
 elif menu == "📦 Estoque":
     tela_estoque()

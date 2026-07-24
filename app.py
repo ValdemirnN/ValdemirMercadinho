@@ -590,6 +590,86 @@ def widget_status_caixa(caixa):
             else:
                 mostrar_popup(f"Caixa fechado. Faltou R$ {formatar_moeda(abs(diferenca))} na gaveta.", tipo="erro")
             st.rerun()
+def tela_historico_caixas():
+    st.title("📜 Histórico de Caixas")
+    st.caption("Todos os caixas abertos e fechados: quem operou, quanto entrou e o lucro estimado.")
+
+    caixas_resp = supabase.table("caixas").select("*, usuarios(nome)") \
+        .eq("empresa_id", emp_id).order("id", desc=True).execute()
+    lista_caixas = caixas_resp.data or []
+
+    if not lista_caixas:
+        st.info("Nenhum caixa registrado ainda.")
+        return
+
+    for caixa in lista_caixas:
+        nome_operador = caixa['usuarios']['nome'] if caixa.get('usuarios') else "Operador desconhecido"
+        status_aberto = caixa['status'] == 'aberto'
+        icone_status = "🟢 Aberto" if status_aberto else "🔴 Fechado"
+
+        vendas_caixa_resp = supabase.table("vendas").select("id, valor_total, forma_pagamento") \
+            .eq("caixa_id", caixa['id']).eq("status", "concluida").execute()
+        vendas_caixa = vendas_caixa_resp.data or []
+        total_vendido = sum(float(v['valor_total']) for v in vendas_caixa)
+        qtd_vendas = len(vendas_caixa)
+
+        # ---- Lucro estimado: receita - custo dos produtos vendidos ----
+        ids_vendas_caixa = [v['id'] for v in vendas_caixa]
+        custo_total = 0.0
+        if ids_vendas_caixa:
+            itens_resp = supabase.table("itens_venda").select("quantidade, produtos(preco_custo)") \
+                .in_("venda_id", ids_vendas_caixa).execute()
+            for it in (itens_resp.data or []):
+                preco_custo_it = float(it['produtos']['preco_custo']) if it.get('produtos') and it['produtos'].get('preco_custo') else 0.0
+                custo_total += float(it['quantidade']) * preco_custo_it
+        lucro_caixa = total_vendido - custo_total
+
+        # ---- Sangrias e valor esperado na gaveta ----
+        sangrias_resp = supabase.table("sangrias_caixa").select("valor").eq("caixa_id", caixa['id']).execute()
+        total_sangrias = sum(float(s['valor']) for s in (sangrias_resp.data or []))
+        valor_abertura = float(caixa['valor_abertura'])
+        total_dinheiro = sum(float(v['valor_total']) for v in vendas_caixa if v['forma_pagamento'] == 'dinheiro')
+        valor_esperado_gaveta = valor_abertura + total_dinheiro - total_sangrias
+
+        titulo = f"{icone_status} — 👤 {nome_operador} — Abertura R$ {formatar_moeda(valor_abertura)} — Vendeu R$ {formatar_moeda(total_vendido)}"
+
+        with st.expander(titulo):
+            col1, col2, col3, col4, col5 = st.columns(5)
+            col1.metric("👤 Operador", nome_operador)
+            col2.metric("💰 Abertura", f"R$ {formatar_moeda(valor_abertura)}")
+            col3.metric("🛒 Vendas", f"{qtd_vendas}", help=f"Total vendido: R$ {formatar_moeda(total_vendido)}")
+            col4.metric("✨ Lucro Estimado", f"R$ {formatar_moeda(lucro_caixa)}")
+            col5.metric("📤 Sangrias", f"R$ {formatar_moeda(total_sangrias)}")
+
+            if status_aberto:
+                st.info(f"💵 Esperado na gaveta agora: R$ {formatar_moeda(valor_esperado_gaveta)}")
+            else:
+                col_f1, col_f2, col_f3 = st.columns(3)
+                col_f1.metric("🧮 Esperado no Fechamento", f"R$ {formatar_moeda(caixa.get('valor_fechamento_calculado') or 0)}")
+                col_f2.metric("🔢 Contado no Fechamento", f"R$ {formatar_moeda(caixa.get('valor_fechamento_informado') or 0)}")
+                diferenca = float(caixa.get('diferenca') or 0)
+                col_f3.metric(
+                    "⚖️ Diferença", f"R$ {formatar_moeda(diferenca)}",
+                    delta="Bateu certinho" if abs(diferenca) < 0.01 else ("Sobrou" if diferenca > 0 else "Faltou"),
+                    delta_color="normal" if diferenca >= 0 else "inverse"
+                )
+                if caixa.get('data_fechamento'):
+                    try:
+                        dt_fech = datetime.fromisoformat(caixa['data_fechamento'].replace("Z", "+00:00"))
+                        st.caption(f"🗓️ Fechado em: {dt_fech.strftime('%d/%m/%Y %H:%M')}")
+                    except Exception:
+                        pass
+
+            if vendas_caixa:
+                st.markdown("---")
+                st.caption("💳 Vendas por forma de pagamento:")
+                forma_totais = {}
+                for v in vendas_caixa:
+                    forma_totais[v['forma_pagamento']] = forma_totais.get(v['forma_pagamento'], 0.0) + float(v['valor_total'])
+                for forma, val in forma_totais.items():
+                    st.write(f"- {forma.replace('_', ' ').title()}: R$ {formatar_moeda(val)}")
+            else:
+                st.caption("Nenhuma venda registrada neste caixa.")
 
 # ==============================================================
 # 6. MÓDULO PDV

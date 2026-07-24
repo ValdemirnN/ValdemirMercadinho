@@ -482,8 +482,11 @@ if not st.session_state['logado']:
                                     "email": email_cadastro, "senha_hash": senha_cadastro, "perfil": "dono",
                                     "ativo": False, "email_confirmado": False, "token_confirmacao": token_confirmacao_novo
                                 }).execute()
-                                enviar_email_confirmacao(email_cadastro, nome_usuario_cadastro, token_confirmacao_novo)
-                                mostrar_popup("Conta criada! Enviamos um e-mail de confirmação — clique no link para prosseguir com o pagamento.")
+                                email_enviado = enviar_email_confirmacao(email_cadastro, nome_usuario_cadastro, token_confirmacao_novo)
+if email_enviado:
+    mostrar_popup("Conta criada! Enviamos um e-mail de confirmação — clique no link para prosseguir com o pagamento.")
+else:
+    mostrar_popup("Conta criada, mas houve falha ao enviar o e-mail. Veja o erro acima e verifique as credenciais SMTP.", tipo="erro")
                             except Exception as e_criar:
                                 mostrar_popup(f"Erro ao criar conta: {e_criar}", tipo="erro")
 

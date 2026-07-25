@@ -203,7 +203,7 @@ def restaurar_sessao_por_token():
         if uid_param and tk_param:
             usuario_id_restaurar = int(uid_param)
             resultado = supabase.table("usuarios").select(
-                "id, nome, senha_hash, perfil, empresa_id, ativo, cargo, permissoes_extras"
+                "id, nome, senha_hash, perfil, empresa_id, ativo, cargo, permissoes_extras, foto_base64"
             ).eq("id", usuario_id_restaurar).execute()
             if resultado.data:
                 usuario = resultado.data[0]
@@ -218,7 +218,8 @@ def restaurar_sessao_por_token():
                             'usuario_id': usuario['id'],
                             'nome_usuario': usuario['nome'],
                             'cargo': usuario.get('cargo') or '',
-                            'permissoes_extras': usuario.get('permissoes_extras') or []
+                            'permissoes_extras': usuario.get('permissoes_extras') or [],
+                            'foto_base64': usuario.get('foto_base64') or ''
                         })
                     else:
                         st.query_params.clear()
@@ -229,7 +230,8 @@ def restaurar_sessao_por_token():
 def fazer_logout():
     st.session_state.update({
         'logado': False, 'perfil': '', 'empresa_id': None,
-        'usuario_id': None, 'nome_usuario': '', 'cargo': '', 'permissoes_extras': []
+        'usuario_id': None, 'nome_usuario': '', 'cargo': '', 'permissoes_extras': [],
+        'foto_base64': ''
     })
     st.query_params.clear()
 
@@ -238,7 +240,8 @@ def inicializar_sessao():
     if 'logado' not in st.session_state:
         st.session_state.update({
             'logado': False, 'perfil': '', 'empresa_id': None,
-            'usuario_id': None, 'nome_usuario': '', 'cargo': '', 'permissoes_extras': []
+            'usuario_id': None, 'nome_usuario': '', 'cargo': '', 'permissoes_extras': [],
+            'foto_base64': ''
         })
         restaurar_sessao_por_token()
 
@@ -339,7 +342,7 @@ def tela_login_e_cadastro():
         if entrar:
             try:
                 resultado = supabase.table("usuarios").select(
-                    "id, nome, senha_hash, perfil, empresa_id, ativo, cargo, permissoes_extras"
+                    "id, nome, senha_hash, perfil, empresa_id, ativo, cargo, permissoes_extras, foto_base64"
                 ).eq("email", email_login).execute()
 
                 if resultado.data:
@@ -358,7 +361,8 @@ def tela_login_e_cadastro():
                                 'usuario_id': usuario['id'],
                                 'nome_usuario': usuario['nome'],
                                 'cargo': usuario.get('cargo') or '',
-                                'permissoes_extras': usuario.get('permissoes_extras') or []
+                                'permissoes_extras': usuario.get('permissoes_extras') or [],
+                                'foto_base64': usuario.get('foto_base64') or ''
                             })
                             st.query_params.update({
                                 "uid": str(usuario['id']),

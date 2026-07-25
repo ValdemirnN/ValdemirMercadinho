@@ -111,7 +111,7 @@ else:  # dono, gerente
     opcoes_menu = ["📊 Dashboard", "🧾 PDV", "📦 Estoque", "🛒 Compras",
                    "💳 Fiado (Clientes)", "💰 Financeiro", "👥 Equipe"]
 
-menu = st.sidebar.radio("Módulos", opcoes_menu)
+menu = st.sidebar.radio("Módulos", opcoes_menu, key="menu_modulo_selecionado")
 
 # ==============================================================
 # 3. ROTEAMENTO

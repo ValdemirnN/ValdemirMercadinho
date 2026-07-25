@@ -3,8 +3,27 @@ utils.py
 Pequenas funções utilitárias usadas em vários módulos: formatação de moeda,
 popups de aviso e parsing seguro de datas.
 """
+import re
 import streamlit as st
 from datetime import datetime
+
+REQUISITOS_SENHA_TEXTO = (
+    "A senha precisa ter: mínimo 7 caracteres, "
+    "1 letra maiúscula, 1 número e 1 caractere especial (ex: !@#$%)."
+)
+
+
+def validar_senha_forte(senha):
+    """Retorna (True, '') se a senha atende aos requisitos, ou (False, 'mensagem do que falta')."""
+    if len(senha) < 7:
+        return False, "A senha precisa ter no mínimo 7 caracteres."
+    if not re.search(r"[A-Z]", senha):
+        return False, "A senha precisa ter pelo menos uma letra maiúscula."
+    if not re.search(r"[0-9]", senha):
+        return False, "A senha precisa ter pelo menos um número."
+    if not re.search(r"[^A-Za-z0-9]", senha):
+        return False, "A senha precisa ter pelo menos um caractere especial (ex: ! @ # $ % &)."
+    return True, ""
 
 
 def formatar_moeda(valor):

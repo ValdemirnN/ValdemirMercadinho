@@ -18,7 +18,7 @@ import streamlit as st
 import config  # noqa: F401  (aplica page_config + CSS ao ser importado)
 from auth import (
     inicializar_sessao, tela_login_e_cadastro, fazer_logout, tem_acesso_completo,
-    MODULOS_EXTRAS_DISPONIVEIS
+    MODULOS_EXTRAS_DISPONIVEIS, tela_redefinir_senha
 )
 from caixa import buscar_caixa_aberto, tela_abrir_caixa, tela_historico_caixas
 from pdv import tela_pdv
@@ -35,6 +35,9 @@ from perfil import tela_meu_perfil
 # 1. SESSÃO / LOGIN
 # ==============================================================
 inicializar_sessao()
+
+if st.query_params.get("redefinir_senha"):
+    tela_redefinir_senha()
 
 if st.session_state.get('email_trocado_sucesso'):
     st.success(f"✅ E-mail alterado com sucesso para **{st.session_state['email_trocado_sucesso']}**! Use esse e-mail no próximo login.")

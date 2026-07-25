@@ -10,7 +10,7 @@ precisa pois ele gerencia assinantes, não equipe de mercadinho).
 import streamlit as st
 
 from config import supabase
-from utils import mostrar_popup
+from utils import mostrar_popup, validar_senha_forte, REQUISITOS_SENHA_TEXTO
 from auth import exigir_acesso_completo, MODULOS_EXTRAS_DISPONIVEIS
 
 
@@ -35,6 +35,7 @@ def tela_equipe():
             nome_membro = st.text_input("Nome")
             email_membro = st.text_input("E-mail (usado para login)")
             senha_membro = st.text_input("Senha inicial", type="password")
+            st.caption(REQUISITOS_SENHA_TEXTO)
             perfil_escolhido_label = st.selectbox("Perfil", list(PERFIS_CRIAVEIS.keys()))
             perfil_escolhido = PERFIS_CRIAVEIS[perfil_escolhido_label]
 
@@ -53,10 +54,11 @@ def tela_equipe():
             cadastrar = st.form_submit_button("Cadastrar Membro")
 
         if cadastrar:
+            senha_ok, msg_senha_erro = validar_senha_forte(senha_membro)
             if not nome_membro.strip() or not email_membro.strip():
                 mostrar_popup("Preencha nome e e-mail.", tipo="erro")
-            elif len(senha_membro) < 7:
-                mostrar_popup("A senha precisa ter no mínimo 7 caracteres.", tipo="erro")
+            elif not senha_ok:
+                mostrar_popup(msg_senha_erro, tipo="erro")
             else:
                 email_existente = supabase.table("usuarios").select("id").eq("email", email_membro.strip()).execute()
                 if email_existente.data:
@@ -124,9 +126,11 @@ def tela_equipe():
                         st.rerun()
                 with col2:
                     nova_senha = st.text_input("Nova senha", key=f"nova_senha_membro_{m['id']}", type="password")
+                    st.caption(REQUISITOS_SENHA_TEXTO)
                     if st.button("Redefinir Senha", key=f"btn_redefinir_{m['id']}") and nova_senha:
-                        if len(nova_senha) < 7:
-                            mostrar_popup("A senha precisa ter no mínimo 7 caracteres.", tipo="erro")
+                        senha_ok_membro, msg_senha_membro = validar_senha_forte(nova_senha)
+                        if not senha_ok_membro:
+                            mostrar_popup(msg_senha_membro, tipo="erro")
                         else:
                             supabase.table("usuarios").update({"senha_hash": nova_senha}).eq("id", m['id']).execute()
                             mostrar_popup("Senha redefinida!")

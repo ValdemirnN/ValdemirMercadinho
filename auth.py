@@ -117,6 +117,51 @@ def enviar_email_confirmacao(destinatario, nome_destinatario, token):
         return False
 
 
+def enviar_email_troca_confirmacao(destinatario, nome_destinatario, token):
+    link_confirmacao = f"{URL_BASE_SISTEMA}/?confirmar_troca_email={token}"
+    corpo = (
+        f"Olá {nome_destinatario},\n\n"
+        f"Recebemos um pedido para trocar o e-mail de login da sua conta no Sistema Mercadinho "
+        f"para este endereço.\n"
+        f"Para confirmar a troca, clique no link abaixo:\n{link_confirmacao}\n\n"
+        f"Se você não pediu essa troca, é só ignorar este e-mail — nada vai mudar."
+    )
+    msg = MIMEText(corpo)
+    msg['Subject'] = "Confirme a troca de e-mail - Sistema Mercadinho"
+    msg['From'] = GMAIL_REMETENTE
+    msg['To'] = destinatario
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15) as servidor:
+            servidor.login(GMAIL_REMETENTE, GMAIL_SENHA_APP)
+            servidor.sendmail(GMAIL_REMETENTE, destinatario, msg.as_string())
+        return True
+    except Exception as e:
+        mostrar_popup(f"Erro ao enviar e-mail de confirmação: {e}", tipo="erro")
+        return False
+
+
+def confirmar_troca_email_por_link():
+    try:
+        token_param = st.query_params.get("confirmar_troca_email")
+        if token_param:
+            resultado = supabase.table("usuarios").select("id, novo_email_pendente") \
+                .eq("token_troca_email", token_param).execute()
+            if resultado.data and resultado.data[0].get("novo_email_pendente"):
+                usuario_troca = resultado.data[0]
+                novo_email = usuario_troca["novo_email_pendente"]
+                supabase.table("usuarios").update({
+                    "email": novo_email,
+                    "novo_email_pendente": None,
+                    "token_troca_email": None
+                }).eq("id", usuario_troca['id']).execute()
+                st.session_state['email_trocado_sucesso'] = novo_email
+            else:
+                st.session_state['erro_confirmacao_msg'] = "Link de troca de e-mail inválido ou já utilizado."
+            st.query_params.clear()
+    except Exception:
+        pass
+
+
 def confirmar_email_por_link():
     try:
         token_param = st.query_params.get("confirmar_email")
@@ -247,6 +292,9 @@ def inicializar_sessao():
 
     if st.query_params.get("confirmar_email"):
         confirmar_email_por_link()
+
+    if st.query_params.get("confirmar_troca_email"):
+        confirmar_troca_email_por_link()
 
 
 # ==============================================================

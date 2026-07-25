@@ -25,7 +25,7 @@ from config import (
     supabase, GMAIL_REMETENTE, GMAIL_SENHA_APP, MP_ACCESS_TOKEN,
     URL_BASE_SISTEMA, VALOR_ASSINATURA_MENSAL, SECRET_TOKEN_KEY
 )
-from utils import formatar_moeda, mostrar_popup
+from utils import formatar_moeda, mostrar_popup, validar_senha_forte, REQUISITOS_SENHA_TEXTO
 
 PERFIS_ACESSO_COMPLETO = ("admin_geral", "dono", "gerente")
 
@@ -192,6 +192,16 @@ def tela_redefinir_senha():
     with col_meio:
         st.title("🔑 Redefinir Senha")
 
+        # Tela de sucesso, com botão explícito de voltar ao login
+        if st.session_state.get('senha_redefinida_ok_tela'):
+            st.success("✅ Senha redefinida com sucesso!")
+            if st.button("⬅️ Voltar para o login", type="primary", use_container_width=True):
+                del st.session_state['senha_redefinida_ok_tela']
+                st.query_params.clear()
+                st.session_state['senha_redefinida_sucesso'] = True
+                st.rerun()
+            st.stop()
+
         resultado = supabase.table("usuarios").select("id, nome") \
             .eq("token_redefinicao_senha", token_redefinicao).execute()
 
@@ -204,7 +214,7 @@ def tela_redefinir_senha():
 
         usuario_redefinir = resultado.data[0]
         st.success(f"Olá, {usuario_redefinir['nome']}! Defina sua nova senha abaixo.")
-        st.caption("A senha precisa ter no mínimo 7 caracteres.")
+        st.caption(REQUISITOS_SENHA_TEXTO)
 
         with st.form("form_nova_senha_redefinicao"):
             nova_senha1 = st.text_input("Nova senha", type="password")
@@ -214,16 +224,17 @@ def tela_redefinir_senha():
         if confirmar_btn:
             if nova_senha1 != nova_senha2:
                 mostrar_popup("As senhas não coincidem.", tipo="erro")
-            elif len(nova_senha1) < 7:
-                mostrar_popup("A senha precisa ter no mínimo 7 caracteres.", tipo="erro")
             else:
-                supabase.table("usuarios").update({
-                    "senha_hash": nova_senha1,
-                    "token_redefinicao_senha": None
-                }).eq("id", usuario_redefinir['id']).execute()
-                st.query_params.clear()
-                st.session_state['senha_redefinida_sucesso'] = True
-                st.rerun()
+                senha_ok, msg_senha = validar_senha_forte(nova_senha1)
+                if not senha_ok:
+                    mostrar_popup(msg_senha, tipo="erro")
+                else:
+                    supabase.table("usuarios").update({
+                        "senha_hash": nova_senha1,
+                        "token_redefinicao_senha": None
+                    }).eq("id", usuario_redefinir['id']).execute()
+                    st.session_state['senha_redefinida_ok_tela'] = True
+                    st.rerun()
     st.stop()
 
 

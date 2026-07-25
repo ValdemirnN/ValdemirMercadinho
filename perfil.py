@@ -5,39 +5,16 @@ ver e editar os próprios dados — nome, foto e senha. A foto é opcional; se
 não for definida, mostra um ícone padrão. A foto é salva como base64 direto
 na coluna usuarios.foto_base64 (não depende de bucket de Storage).
 """
-import base64
-import io
 import re
 import secrets
 
 import streamlit as st
 
 from config import supabase
-from utils import mostrar_popup, validar_senha_forte, REQUISITOS_SENHA_TEXTO
+from utils import mostrar_popup, validar_senha_forte, REQUISITOS_SENHA_TEXTO, processar_foto_upload
 from auth import enviar_email_troca_confirmacao
 
-TAMANHO_MAX_FOTO = (300, 300)  # redimensiona pra não pesar no banco
 REGEX_EMAIL = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
-
-
-def _processar_foto_upload(arquivo_upload):
-    """Recebe um arquivo do st.file_uploader, redimensiona e retorna base64 (str) pronto pra salvar."""
-    try:
-        from PIL import Image
-    except ImportError:
-        mostrar_popup("Biblioteca Pillow não instalada. Adicione 'Pillow' ao requirements.txt.", tipo="erro")
-        return None
-
-    try:
-        imagem = Image.open(arquivo_upload)
-        imagem = imagem.convert("RGB")
-        imagem.thumbnail(TAMANHO_MAX_FOTO)
-        buffer = io.BytesIO()
-        imagem.save(buffer, format="JPEG", quality=85)
-        return base64.b64encode(buffer.getvalue()).decode("utf-8")
-    except Exception as e:
-        mostrar_popup(f"Não foi possível processar a imagem: {e}", tipo="erro")
-        return None
 
 
 def tela_meu_perfil():
@@ -45,7 +22,7 @@ def tela_meu_perfil():
     usuario_id = st.session_state['usuario_id']
 
     resultado = supabase.table("usuarios").select(
-        "nome, email, cargo, perfil, foto_base64, telefone, "
+        "nome, email, cargo, perfil, foto_base64, telefone, cpf, "
         "endereco_rua, endereco_numero, endereco_bairro, novo_email_pendente"
     ).eq("id", usuario_id).execute()
 
@@ -82,6 +59,7 @@ def tela_meu_perfil():
         st.write(f"**Nome:** {dados_usuario['nome']}")
         st.write(f"**E-mail (login):** {dados_usuario['email']}")
         st.write(f"**Cargo:** {dados_usuario.get('cargo') or dados_usuario['perfil'].capitalize()}")
+        st.write(f"**CPF:** {dados_usuario.get('cpf') or '— não informado —'}")
         st.caption("O cargo só pode ser alterado pelo Dono/Gerente, na aba Equipe.")
 
     st.markdown("---")
@@ -89,6 +67,7 @@ def tela_meu_perfil():
 
     with st.form("form_editar_perfil"):
         novo_nome = st.text_input("Nome", value=dados_usuario['nome'])
+        novo_cpf = st.text_input("CPF", value=dados_usuario.get('cpf') or "", placeholder="000.000.000-00")
         novo_telefone = st.text_input(
             "Contato (WhatsApp/telefone)", value=dados_usuario.get('telefone') or "",
             placeholder="(84) 99999-9999"
@@ -120,6 +99,7 @@ def tela_meu_perfil():
 
         dados_atualizar = {
             "nome": novo_nome.strip(),
+            "cpf": novo_cpf.strip() or None,
             "telefone": novo_telefone.strip() or None,
             "endereco_rua": nova_rua.strip() or None,
             "endereco_numero": novo_numero.strip() or None,
@@ -127,7 +107,7 @@ def tela_meu_perfil():
         }
 
         if nova_foto is not None:
-            foto_base64_processada = _processar_foto_upload(nova_foto)
+            foto_base64_processada = processar_foto_upload(nova_foto)
             if foto_base64_processada is None:
                 return
             dados_atualizar["foto_base64"] = foto_base64_processada

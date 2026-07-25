@@ -71,6 +71,10 @@ def tela_abrir_caixa():
             mostrar_popup("Informe o terminal em que você vai trabalhar.", tipo="erro")
             return
 
+        if valor_abertura <= 0:
+            mostrar_popup("Informe o valor inicial da gaveta (troco). Não é possível abrir o caixa com R$ 0,00.", tipo="erro")
+            return
+
         # Regra 1: o operador não pode ter dois caixas abertos ao mesmo tempo.
         caixa_proprio_aberto = buscar_caixa_aberto()
         if caixa_proprio_aberto:

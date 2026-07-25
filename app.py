@@ -16,7 +16,10 @@ Perfis e o que cada um vê no menu:
 import streamlit as st
 
 import config  # noqa: F401  (aplica page_config + CSS ao ser importado)
-from auth import inicializar_sessao, tela_login_e_cadastro, fazer_logout, tem_acesso_completo
+from auth import (
+    inicializar_sessao, tela_login_e_cadastro, fazer_logout, tem_acesso_completo,
+    MODULOS_EXTRAS_DISPONIVEIS
+)
 from caixa import buscar_caixa_aberto, tela_abrir_caixa, tela_historico_caixas
 from pdv import tela_pdv
 from fiado import tela_fiado
@@ -40,15 +43,20 @@ if not st.session_state['logado']:
 # ==============================================================
 nome_usuario = st.session_state['nome_usuario']
 perfil = st.session_state['perfil']
+cargo = st.session_state.get('cargo') or perfil.capitalize()
 
 st.sidebar.markdown(f"### 👋 Olá, {nome_usuario}")
-st.sidebar.caption(f"Perfil: {perfil.capitalize()}")
+st.sidebar.caption(f"Cargo: {cargo}")
 st.sidebar.button("Sair / Desconectar", on_click=fazer_logout)
 st.sidebar.markdown("---")
 
 # ---- Menu segmentado por perfil ----
 if perfil == "operador":
-    opcoes_menu = ["🧾 PDV", "💳 Fiado (Clientes)"]
+    permissoes_extras_usuario = st.session_state.get('permissoes_extras') or []
+    opcoes_menu = ["🧾 PDV"]
+    for chave_modulo, label_modulo in MODULOS_EXTRAS_DISPONIVEIS:
+        if chave_modulo in permissoes_extras_usuario:
+            opcoes_menu.append(label_modulo)
 elif perfil == "admin_geral":
     opcoes_menu = ["👑 Gestão de Assinantes", "🧾 PDV", "📦 Estoque", "🛒 Compras",
                    "💳 Fiado (Clientes)", "💰 Financeiro", "📊 Dashboard", "👥 Equipe"]

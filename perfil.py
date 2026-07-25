@@ -13,7 +13,7 @@ import secrets
 import streamlit as st
 
 from config import supabase
-from utils import mostrar_popup
+from utils import mostrar_popup, validar_senha_forte, REQUISITOS_SENHA_TEXTO
 from auth import enviar_email_troca_confirmacao
 
 TAMANHO_MAX_FOTO = (300, 300)  # redimensiona pra não pesar no banco
@@ -109,6 +109,7 @@ def tela_meu_perfil():
         st.markdown("**Alterar senha (opcional)**")
         nova_senha = st.text_input("Nova senha", type="password", placeholder="Deixe em branco pra manter a atual")
         confirma_nova_senha = st.text_input("Confirme a nova senha", type="password")
+        st.caption(REQUISITOS_SENHA_TEXTO)
 
         salvar = st.form_submit_button("💾 Salvar Alterações", type="primary")
 
@@ -135,8 +136,9 @@ def tela_meu_perfil():
             if nova_senha != confirma_nova_senha:
                 mostrar_popup("As senhas não coincidem.", tipo="erro")
                 return
-            if len(nova_senha) < 7:
-                mostrar_popup("A senha precisa ter no mínimo 7 caracteres.", tipo="erro")
+            senha_ok, msg_senha_erro = validar_senha_forte(nova_senha)
+            if not senha_ok:
+                mostrar_popup(msg_senha_erro, tipo="erro")
                 return
             dados_atualizar["senha_hash"] = nova_senha
 

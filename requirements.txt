@@ -1,6 +1,7 @@
 streamlit
 supabase
-pandas
 python-dateutil
-openpyxl
+requests
+pandas
 plotly
+ 

@@ -29,6 +29,17 @@ from utils import formatar_moeda, mostrar_popup
 
 PERFIS_ACESSO_COMPLETO = ("admin_geral", "dono", "gerente")
 
+# Módulos que podem ser liberados como "extra" pra um Operador, além do PDV
+# (que ele sempre tem por padrão). Chave = salva em permissoes_extras no banco,
+# Label = como aparece no menu lateral e nos checkboxes de cadastro/edição.
+MODULOS_EXTRAS_DISPONIVEIS = [
+    ("dashboard", "📊 Dashboard"),
+    ("estoque", "📦 Estoque"),
+    ("compras", "🛒 Compras"),
+    ("fiado", "💳 Fiado (Clientes)"),
+    ("financeiro", "💰 Financeiro"),
+]
+
 
 # ==============================================================
 # HELPERS DE PERMISSÃO (usados em todos os outros módulos)
@@ -44,6 +55,22 @@ def tem_acesso_completo():
 
 def is_operador():
     return perfil_atual() == "operador"
+
+
+def permissoes_extras_atual():
+    """Lista de módulos extras liberados para o usuário logado (só importa pra operador)."""
+    return st.session_state.get("permissoes_extras") or []
+
+
+def tem_permissao_extra(modulo):
+    """
+    Verifica se o usuário logado pode acessar um módulo fora do pacote padrão dele.
+    Quem já tem acesso completo (dono/gerente/admin_geral) sempre pode.
+    Operador só pode se 'modulo' estiver na lista permissoes_extras salva no cadastro.
+    """
+    if tem_acesso_completo():
+        return True
+    return modulo in permissoes_extras_atual()
 
 
 def pode_ver_diferenca_caixa():
@@ -176,7 +203,7 @@ def restaurar_sessao_por_token():
         if uid_param and tk_param:
             usuario_id_restaurar = int(uid_param)
             resultado = supabase.table("usuarios").select(
-                "id, nome, senha_hash, perfil, empresa_id, ativo"
+                "id, nome, senha_hash, perfil, empresa_id, ativo, cargo, permissoes_extras"
             ).eq("id", usuario_id_restaurar).execute()
             if resultado.data:
                 usuario = resultado.data[0]
@@ -189,7 +216,9 @@ def restaurar_sessao_por_token():
                             'perfil': usuario['perfil'],
                             'empresa_id': usuario['empresa_id'],
                             'usuario_id': usuario['id'],
-                            'nome_usuario': usuario['nome']
+                            'nome_usuario': usuario['nome'],
+                            'cargo': usuario.get('cargo') or '',
+                            'permissoes_extras': usuario.get('permissoes_extras') or []
                         })
                     else:
                         st.query_params.clear()
@@ -200,7 +229,7 @@ def restaurar_sessao_por_token():
 def fazer_logout():
     st.session_state.update({
         'logado': False, 'perfil': '', 'empresa_id': None,
-        'usuario_id': None, 'nome_usuario': ''
+        'usuario_id': None, 'nome_usuario': '', 'cargo': '', 'permissoes_extras': []
     })
     st.query_params.clear()
 
@@ -209,7 +238,7 @@ def inicializar_sessao():
     if 'logado' not in st.session_state:
         st.session_state.update({
             'logado': False, 'perfil': '', 'empresa_id': None,
-            'usuario_id': None, 'nome_usuario': ''
+            'usuario_id': None, 'nome_usuario': '', 'cargo': '', 'permissoes_extras': []
         })
         restaurar_sessao_por_token()
 
@@ -310,7 +339,7 @@ def tela_login_e_cadastro():
         if entrar:
             try:
                 resultado = supabase.table("usuarios").select(
-                    "id, nome, senha_hash, perfil, empresa_id, ativo"
+                    "id, nome, senha_hash, perfil, empresa_id, ativo, cargo, permissoes_extras"
                 ).eq("email", email_login).execute()
 
                 if resultado.data:
@@ -327,7 +356,9 @@ def tela_login_e_cadastro():
                                 'perfil': usuario['perfil'],
                                 'empresa_id': usuario['empresa_id'],
                                 'usuario_id': usuario['id'],
-                                'nome_usuario': usuario['nome']
+                                'nome_usuario': usuario['nome'],
+                                'cargo': usuario.get('cargo') or '',
+                                'permissoes_extras': usuario.get('permissoes_extras') or []
                             })
                             st.query_params.update({
                                 "uid": str(usuario['id']),

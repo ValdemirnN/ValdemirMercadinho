@@ -3,9 +3,38 @@ utils.py
 Pequenas funções utilitárias usadas em vários módulos: formatação de moeda,
 popups de aviso e parsing seguro de datas.
 """
+import base64
+import io
 import re
 import streamlit as st
 from datetime import datetime
+
+REQUISITOS_SENHA_TEXTO = (
+    "A senha precisa ter: mínimo 7 caracteres, "
+    "1 letra maiúscula, 1 número e 1 caractere especial (ex: !@#$%)."
+)
+
+TAMANHO_MAX_FOTO_PADRAO = (300, 300)
+
+
+def processar_foto_upload(arquivo_upload, tamanho_max=TAMANHO_MAX_FOTO_PADRAO):
+    """Recebe um arquivo do st.file_uploader, redimensiona e retorna base64 (str) pronto pra salvar."""
+    try:
+        from PIL import Image
+    except ImportError:
+        mostrar_popup("Biblioteca Pillow não instalada. Adicione 'Pillow' ao requirements.txt.", tipo="erro")
+        return None
+
+    try:
+        imagem = Image.open(arquivo_upload)
+        imagem = imagem.convert("RGB")
+        imagem.thumbnail(tamanho_max)
+        buffer = io.BytesIO()
+        imagem.save(buffer, format="JPEG", quality=85)
+        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+    except Exception as e:
+        mostrar_popup(f"Não foi possível processar a imagem: {e}", tipo="erro")
+        return None
 
 REQUISITOS_SENHA_TEXTO = (
     "A senha precisa ter: mínimo 7 caracteres, "

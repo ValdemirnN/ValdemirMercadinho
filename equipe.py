@@ -27,6 +27,10 @@ def tela_equipe():
     st.title("👥 Equipe")
     emp_id = st.session_state['empresa_id']
 
+    if st.session_state.get('msg_sucesso_equipe'):
+        mostrar_popup(st.session_state['msg_sucesso_equipe'])
+        del st.session_state['msg_sucesso_equipe']
+
     tab_lista, tab_cad = st.tabs(["📋 Membros da Equipe", "➕ Cadastrar Membro"])
 
     with tab_cad:
@@ -99,9 +103,13 @@ def tela_equipe():
                         if foto_processada:
                             dados_novo_membro["foto_base64"] = foto_processada
 
-                    supabase.table("usuarios").insert(dados_novo_membro).execute()
-                    mostrar_popup(f"{nome_membro} cadastrado(a) com sucesso como {cargo_escolhido}!")
-                    st.rerun()
+                    try:
+                        supabase.table("usuarios").insert(dados_novo_membro).execute()
+                        st.session_state['msg_sucesso_equipe'] = f"{nome_membro} cadastrado(a) com sucesso como {cargo_escolhido}!"
+                        st.session_state['menu_modulo_selecionado'] = "👥 Equipe"
+                        st.rerun()
+                    except Exception as e_inserir:
+                        mostrar_popup(f"Erro ao cadastrar membro: {e_inserir}", tipo="erro")
 
     with tab_lista:
         membros_resp = supabase.table("usuarios").select(
@@ -171,7 +179,8 @@ def tela_equipe():
                         if foto_processada_m:
                             dados_atualizar_membro["foto_base64"] = foto_processada_m
                     supabase.table("usuarios").update(dados_atualizar_membro).eq("id", m['id']).execute()
-                    mostrar_popup("Dados cadastrais atualizados!")
+                    st.session_state['msg_sucesso_equipe'] = "Dados cadastrais atualizados!"
+                    st.session_state['menu_modulo_selecionado'] = "👥 Equipe"
                     st.rerun()
 
                 st.markdown("---")
@@ -198,7 +207,8 @@ def tela_equipe():
                             "cargo": novo_cargo,
                             "permissoes_extras": novos_modulos_marcados
                         }).eq("id", m['id']).execute()
-                        mostrar_popup("Cargo e permissões atualizados!")
+                        st.session_state['msg_sucesso_equipe'] = "Cargo e permissões atualizados!"
+                        st.session_state['menu_modulo_selecionado'] = "👥 Equipe"
                         st.rerun()
 
                 col1, col2 = st.columns(2)

@@ -4,4 +4,4 @@ python-dateutil
 requests
 pandas
 plotly
- 
+Pillow

@@ -52,8 +52,23 @@ cargo = st.session_state.get('cargo') or perfil.capitalize()
 foto_base64_usuario = st.session_state.get('foto_base64')
 
 if foto_base64_usuario:
-    avatar_html = f"""<img src="data:image/jpeg;base64,{foto_base64_usuario}"
-        style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid #3B82F6;" />"""
+    avatar_html = f"""
+    <input type="checkbox" id="avatar_lightbox_toggle" style="display:none;">
+    <label for="avatar_lightbox_toggle" style="cursor:zoom-in;display:inline-block;">
+        <img src="data:image/jpeg;base64,{foto_base64_usuario}"
+            style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid #3B82F6;" />
+    </label>
+    <label for="avatar_lightbox_toggle" style="display:none;position:fixed;top:0;left:0;
+        width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999;
+        align-items:center;justify-content:center;cursor:zoom-out;"
+        class="avatar_lightbox_overlay">
+        <img src="data:image/jpeg;base64,{foto_base64_usuario}"
+            style="max-width:85vw;max-height:85vh;border-radius:16px;box-shadow:0 0 40px rgba(0,0,0,0.6);" />
+    </label>
+    <style>
+    #avatar_lightbox_toggle:checked ~ .avatar_lightbox_overlay {{ display: flex !important; }}
+    </style>
+    """
 else:
     avatar_html = """<div style="width:64px;height:64px;border-radius:50%;background-color:#5F6368;
         display:flex;align-items:center;justify-content:center;border:2px solid #3B82F6;">

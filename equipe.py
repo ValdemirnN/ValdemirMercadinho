@@ -10,7 +10,7 @@ precisa pois ele gerencia assinantes, não equipe de mercadinho).
 import streamlit as st
 
 from config import supabase
-from utils import mostrar_popup, validar_senha_forte, REQUISITOS_SENHA_TEXTO
+from utils import mostrar_popup, validar_senha_forte, REQUISITOS_SENHA_TEXTO, processar_foto_upload
 from auth import exigir_acesso_completo, MODULOS_EXTRAS_DISPONIVEIS
 
 
@@ -36,6 +36,20 @@ def tela_equipe():
             email_membro = st.text_input("E-mail (usado para login)")
             senha_membro = st.text_input("Senha inicial", type="password")
             st.caption(REQUISITOS_SENHA_TEXTO)
+
+            cpf_membro = st.text_input("CPF", placeholder="000.000.000-00")
+            telefone_membro = st.text_input("Contato (WhatsApp/telefone)", placeholder="(84) 99999-9999")
+
+            st.markdown("**Endereço**")
+            col_end1, col_end2 = st.columns([2.5, 1])
+            with col_end1:
+                rua_membro = st.text_input("Rua")
+            with col_end2:
+                numero_membro = st.text_input("Número")
+            bairro_membro = st.text_input("Bairro")
+
+            foto_membro = st.file_uploader("Foto (opcional)", type=["png", "jpg", "jpeg"])
+
             perfil_escolhido_label = st.selectbox("Perfil", list(PERFIS_CRIAVEIS.keys()))
             perfil_escolhido = PERFIS_CRIAVEIS[perfil_escolhido_label]
 
@@ -64,7 +78,7 @@ def tela_equipe():
                 if email_existente.data:
                     mostrar_popup("Já existe uma conta com esse e-mail.", tipo="erro")
                 else:
-                    supabase.table("usuarios").insert({
+                    dados_novo_membro = {
                         "empresa_id": emp_id,
                         "nome": nome_membro.strip(),
                         "email": email_membro.strip(),
@@ -72,15 +86,28 @@ def tela_equipe():
                         "perfil": perfil_escolhido,
                         "cargo": cargo_escolhido,
                         "permissoes_extras": modulos_marcados,
+                        "cpf": cpf_membro.strip() or None,
+                        "telefone": telefone_membro.strip() or None,
+                        "endereco_rua": rua_membro.strip() or None,
+                        "endereco_numero": numero_membro.strip() or None,
+                        "endereco_bairro": bairro_membro.strip() or None,
                         "ativo": True,
                         "email_confirmado": True,
-                    }).execute()
+                    }
+                    if foto_membro is not None:
+                        foto_processada = processar_foto_upload(foto_membro)
+                        if foto_processada:
+                            dados_novo_membro["foto_base64"] = foto_processada
+
+                    supabase.table("usuarios").insert(dados_novo_membro).execute()
                     mostrar_popup(f"{nome_membro} cadastrado(a) com sucesso como {cargo_escolhido}!")
                     st.rerun()
 
     with tab_lista:
-        membros_resp = supabase.table("usuarios").select("id, nome, email, perfil, ativo, cargo, permissoes_extras") \
-            .eq("empresa_id", emp_id).in_("perfil", ["operador", "gerente"]).order("nome").execute()
+        membros_resp = supabase.table("usuarios").select(
+            "id, nome, email, perfil, ativo, cargo, permissoes_extras, "
+            "foto_base64, cpf, telefone, endereco_rua, endereco_numero, endereco_bairro"
+        ).eq("empresa_id", emp_id).in_("perfil", ["operador", "gerente"]).order("nome").execute()
         membros = membros_resp.data or []
 
         if not membros:
@@ -92,7 +119,62 @@ def tela_equipe():
             status_txt = "🟢 Ativo" if m['ativo'] else "🔴 Bloqueado"
             cargo_atual = m.get('cargo') or m['perfil'].capitalize()
             with st.expander(f"{icone_perfil} {m['nome']} — {cargo_atual} — {status_txt}"):
-                st.write(f"**E-mail:** {m['email']}")
+                col_foto_m, col_info_m = st.columns([1, 3])
+                with col_foto_m:
+                    foto_membro_atual = m.get('foto_base64')
+                    if foto_membro_atual:
+                        st.markdown(
+                            f"""<img src="data:image/jpeg;base64,{foto_membro_atual}"
+                                style="width:90px;height:90px;border-radius:50%;object-fit:cover;
+                                border:2px solid #3B82F6;" />""",
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        st.markdown(
+                            """<div style="width:90px;height:90px;border-radius:50%;background-color:#5F6368;
+                                display:flex;align-items:center;justify-content:center;border:2px solid #3B82F6;">
+                                <svg viewBox="0 0 24 24" width="50" height="50" fill="white">
+                                    <circle cx="12" cy="8" r="4"/>
+                                    <path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6v1H4v-1z"/>
+                                </svg>
+                            </div>""",
+                            unsafe_allow_html=True
+                        )
+                with col_info_m:
+                    st.write(f"**E-mail:** {m['email']}")
+                    st.write(f"**CPF:** {m.get('cpf') or '— não informado —'}")
+                    st.write(f"**Contato:** {m.get('telefone') or '— não informado —'}")
+                    endereco_partes = [p for p in [m.get('endereco_rua'), m.get('endereco_numero'), m.get('endereco_bairro')] if p]
+                    st.write(f"**Endereço:** {', '.join(endereco_partes) if endereco_partes else '— não informado —'}")
+
+                st.markdown("**Editar dados cadastrais**")
+                novo_cpf_m = st.text_input("CPF", value=m.get('cpf') or "", key=f"cpf_membro_{m['id']}")
+                novo_telefone_m = st.text_input("Contato", value=m.get('telefone') or "", key=f"tel_membro_{m['id']}")
+                col_end_m1, col_end_m2 = st.columns([2.5, 1])
+                with col_end_m1:
+                    nova_rua_m = st.text_input("Rua", value=m.get('endereco_rua') or "", key=f"rua_membro_{m['id']}")
+                with col_end_m2:
+                    novo_numero_m = st.text_input("Número", value=m.get('endereco_numero') or "", key=f"num_membro_{m['id']}")
+                novo_bairro_m = st.text_input("Bairro", value=m.get('endereco_bairro') or "", key=f"bairro_membro_{m['id']}")
+                nova_foto_m = st.file_uploader("Trocar foto", type=["png", "jpg", "jpeg"], key=f"foto_membro_{m['id']}")
+
+                if st.button("Salvar dados cadastrais", key=f"salvar_dados_{m['id']}"):
+                    dados_atualizar_membro = {
+                        "cpf": novo_cpf_m.strip() or None,
+                        "telefone": novo_telefone_m.strip() or None,
+                        "endereco_rua": nova_rua_m.strip() or None,
+                        "endereco_numero": novo_numero_m.strip() or None,
+                        "endereco_bairro": novo_bairro_m.strip() or None,
+                    }
+                    if nova_foto_m is not None:
+                        foto_processada_m = processar_foto_upload(nova_foto_m)
+                        if foto_processada_m:
+                            dados_atualizar_membro["foto_base64"] = foto_processada_m
+                    supabase.table("usuarios").update(dados_atualizar_membro).eq("id", m['id']).execute()
+                    mostrar_popup("Dados cadastrais atualizados!")
+                    st.rerun()
+
+                st.markdown("---")
 
                 if m['perfil'] == 'operador':
                     lista_cargos = CARGOS_OPERADOR

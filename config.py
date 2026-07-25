@@ -14,35 +14,28 @@ st.set_page_config(page_title="Mercadinho - Sistema", page_icon="🛒", layout="
 # ==============================================================
 # FORÇA TÍTULO E FAVICON DA ABA (contorna limitação do Streamlit
 # Community Cloud, que às vezes ignora o page_title/page_icon
-# acima e mantém "Streamlit" + logo padrão na aba do navegador)
+# acima e mantém "Streamlit" + logo padrão na aba do navegador).
+# Usa o truque do <img onerror=...> porque <script> inserido via
+# innerHTML/markdown não executa, mas atributos de evento executam
+# e rodam direto no documento principal (sem iframe, sem CORS).
 # ==============================================================
-import streamlit.components.v1 as _components
+_URL_FAVICON = "https://raw.githubusercontent.com/valdemirnn/valdemirmercadinho/main/logo_sem_fundo.png"
 
-_components.html("""
-<script>
-try {
-    var doc = window.parent.document;
-    doc.title = "Mercadinho - Sistema";
-
-    var favicon = doc.querySelector("link[rel~='icon']");
-    if (!favicon) {
-        favicon = doc.createElement('link');
-        favicon.rel = 'icon';
-        doc.head.appendChild(favicon);
-    }
-    favicon.href = "https://raw.githubusercontent.com/valdemirnn/valdemirmercadinho/main/logo_sem_fundo.png";
-
-    // Reaplica a cada 1s por alguns segundos, caso o Streamlit sobrescreva de volta
+st.markdown(f"""
+<img src="x" style="display:none" onerror="
+    document.title = 'Mercadinho - Sistema';
+    var l = document.querySelector(&quot;link[rel~='icon']&quot;);
+    if (!l) {{ l = document.createElement('link'); l.rel = 'icon'; document.head.appendChild(l); }}
+    l.href = '{_URL_FAVICON}';
     var tentativas = 0;
-    var intervalo = setInterval(function() {
-        doc.title = "Mercadinho - Sistema";
-        favicon.href = "https://raw.githubusercontent.com/valdemirnn/valdemirmercadinho/main/logo_sem_fundo.png";
+    var intervalo = setInterval(function() {{
+        document.title = 'Mercadinho - Sistema';
+        l.href = '{_URL_FAVICON}';
         tentativas++;
-        if (tentativas > 10) clearInterval(intervalo);
-    }, 1000);
-} catch (e) {}
-</script>
-""", height=0, width=0)
+        if (tentativas > 15) clearInterval(intervalo);
+    }}, 500);
+">
+""", unsafe_allow_html=True)
 
 # ==============================================================
 # CUSTOMIZAÇÃO VISUAL (CSS)

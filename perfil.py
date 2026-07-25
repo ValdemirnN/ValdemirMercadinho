@@ -1,195 +1,136 @@
 """
-perfil.py
-Tela "Meu Perfil": qualquer usuário logado (Dono, Gerente ou Operador) pode
-ver e editar os próprios dados — nome, foto e senha. A foto é opcional; se
-não for definida, mostra um ícone padrão. A foto é salva como base64 direto
-na coluna usuarios.foto_base64 (não depende de bucket de Storage).
-"""
-import base64
-import io
-import re
-import secrets
+equipe.py
+Gestão de equipe: o Dono/Gerente cadastra Operadores (e outros Gerentes) que
+vão trabalhar no PDV. Sem essa tela não existe forma de criar usuários com
+perfil "operador", então ela é o que viabiliza a visão segmentada por perfil.
 
+Somente Dono e Gerente enxergam esta aba (Operador não vê, Admin_geral não
+precisa pois ele gerencia assinantes, não equipe de mercadinho).
+"""
 import streamlit as st
 
 from config import supabase
 from utils import mostrar_popup, validar_senha_forte, REQUISITOS_SENHA_TEXTO
-from auth import enviar_email_troca_confirmacao
-
-TAMANHO_MAX_FOTO = (300, 300)  # redimensiona pra não pesar no banco
-REGEX_EMAIL = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+from auth import exigir_acesso_completo, MODULOS_EXTRAS_DISPONIVEIS
 
 
-def _processar_foto_upload(arquivo_upload):
-    """Recebe um arquivo do st.file_uploader, redimensiona e retorna base64 (str) pronto pra salvar."""
-    try:
-        from PIL import Image
-    except ImportError:
-        mostrar_popup("Biblioteca Pillow não instalada. Adicione 'Pillow' ao requirements.txt.", tipo="erro")
-        return None
+PERFIS_CRIAVEIS = {"Operador (PDV apenas, por padrão)": "operador", "Gerente (acesso completo)": "gerente"}
 
-    try:
-        imagem = Image.open(arquivo_upload)
-        imagem = imagem.convert("RGB")
-        imagem.thumbnail(TAMANHO_MAX_FOTO)
-        buffer = io.BytesIO()
-        imagem.save(buffer, format="JPEG", quality=85)
-        return base64.b64encode(buffer.getvalue()).decode("utf-8")
-    except Exception as e:
-        mostrar_popup(f"Não foi possível processar a imagem: {e}", tipo="erro")
-        return None
+# Cargos são só um rótulo de identificação (aparece no cadastro/listagem).
+# Quem manda no que a pessoa acessa é o perfil + as permissões extras abaixo.
+CARGOS_OPERADOR = ["Caixa", "Secretário(a)", "Repositor(a)", "Estoquista"]
+CARGOS_GERENTE = ["Gerente"]
 
 
-def tela_meu_perfil():
-    st.title("👤 Meu Perfil")
-    usuario_id = st.session_state['usuario_id']
+def tela_equipe():
+    exigir_acesso_completo()
+    st.title("👥 Equipe")
+    emp_id = st.session_state['empresa_id']
 
-    resultado = supabase.table("usuarios").select(
-        "nome, email, cargo, perfil, foto_base64, telefone, "
-        "endereco_rua, endereco_numero, endereco_bairro, novo_email_pendente"
-    ).eq("id", usuario_id).execute()
+    tab_lista, tab_cad = st.tabs(["📋 Membros da Equipe", "➕ Cadastrar Membro"])
 
-    if not resultado.data:
-        st.error("Não foi possível carregar seus dados.")
-        return
+    with tab_cad:
+        st.caption("Por padrão, Operadores só acessam o PDV e só veem o histórico dos próprios caixas (sem ver diferenças de fechamento). Marque abaixo quais outras páginas esse membro pode acessar.")
+        with st.form("form_cadastro_equipe"):
+            nome_membro = st.text_input("Nome")
+            email_membro = st.text_input("E-mail (usado para login)")
+            senha_membro = st.text_input("Senha inicial", type="password")
+            st.caption(REQUISITOS_SENHA_TEXTO)
+            perfil_escolhido_label = st.selectbox("Perfil", list(PERFIS_CRIAVEIS.keys()))
+            perfil_escolhido = PERFIS_CRIAVEIS[perfil_escolhido_label]
 
-    dados_usuario = resultado.data[0]
+            lista_cargos = CARGOS_OPERADOR if perfil_escolhido == "operador" else CARGOS_GERENTE
+            cargo_escolhido = st.selectbox("Cargo (rótulo de identificação)", lista_cargos)
 
-    col_foto, col_dados = st.columns([1, 2.5])
-
-    with col_foto:
-        foto_atual = dados_usuario.get("foto_base64")
-        if foto_atual:
-            st.markdown(
-                f"""<img src="data:image/jpeg;base64,{foto_atual}"
-                    style="width:160px;height:160px;border-radius:50%;object-fit:cover;
-                    border:3px solid #3B82F6;" />""",
-                unsafe_allow_html=True
-            )
-        else:
-            st.markdown(
-                """<div style="width:160px;height:160px;border-radius:50%;background-color:#5F6368;
-                    display:flex;align-items:center;justify-content:center;border:3px solid #3B82F6;">
-                    <svg viewBox="0 0 24 24" width="90" height="90" fill="white">
-                        <circle cx="12" cy="8" r="4"/>
-                        <path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6v1H4v-1z"/>
-                    </svg>
-                </div>""",
-                unsafe_allow_html=True
-            )
-
-    with col_dados:
-        st.write(f"**Nome:** {dados_usuario['nome']}")
-        st.write(f"**E-mail (login):** {dados_usuario['email']}")
-        st.write(f"**Cargo:** {dados_usuario.get('cargo') or dados_usuario['perfil'].capitalize()}")
-        st.caption("O cargo só pode ser alterado pelo Dono/Gerente, na aba Equipe.")
-
-    st.markdown("---")
-    st.subheader("✏️ Editar meus dados")
-
-    with st.form("form_editar_perfil"):
-        novo_nome = st.text_input("Nome", value=dados_usuario['nome'])
-        novo_telefone = st.text_input(
-            "Contato (WhatsApp/telefone)", value=dados_usuario.get('telefone') or "",
-            placeholder="(84) 99999-9999"
-        )
-
-        st.markdown("**Endereço**")
-        col_end1, col_end2 = st.columns([2.5, 1])
-        with col_end1:
-            nova_rua = st.text_input("Rua", value=dados_usuario.get('endereco_rua') or "")
-        with col_end2:
-            novo_numero = st.text_input("Número", value=dados_usuario.get('endereco_numero') or "")
-        novo_bairro = st.text_input("Bairro", value=dados_usuario.get('endereco_bairro') or "")
-
-        st.markdown("**Foto**")
-        nova_foto = st.file_uploader("Foto de perfil (opcional)", type=["png", "jpg", "jpeg"])
-        st.caption("Deixe em branco pra manter a foto atual. Envie uma imagem pra trocar.")
-
-        st.markdown("**Alterar senha (opcional)**")
-        nova_senha = st.text_input("Nova senha", type="password", placeholder="Deixe em branco pra manter a atual")
-        confirma_nova_senha = st.text_input("Confirme a nova senha", type="password")
-        st.caption(REQUISITOS_SENHA_TEXTO)
-
-        salvar = st.form_submit_button("💾 Salvar Alterações", type="primary")
-
-    if salvar:
-        if not novo_nome.strip():
-            mostrar_popup("O nome não pode ficar em branco.", tipo="erro")
-            return
-
-        dados_atualizar = {
-            "nome": novo_nome.strip(),
-            "telefone": novo_telefone.strip() or None,
-            "endereco_rua": nova_rua.strip() or None,
-            "endereco_numero": novo_numero.strip() or None,
-            "endereco_bairro": novo_bairro.strip() or None,
-        }
-
-        if nova_foto is not None:
-            foto_base64_processada = _processar_foto_upload(nova_foto)
-            if foto_base64_processada is None:
-                return
-            dados_atualizar["foto_base64"] = foto_base64_processada
-
-        if nova_senha or confirma_nova_senha:
-            if nova_senha != confirma_nova_senha:
-                mostrar_popup("As senhas não coincidem.", tipo="erro")
-                return
-            senha_ok, msg_senha_erro = validar_senha_forte(nova_senha)
-            if not senha_ok:
-                mostrar_popup(msg_senha_erro, tipo="erro")
-                return
-            dados_atualizar["senha_hash"] = nova_senha
-
-        supabase.table("usuarios").update(dados_atualizar).eq("id", usuario_id).execute()
-
-        # Atualiza a sessão pra sidebar refletir na hora
-        st.session_state['nome_usuario'] = dados_atualizar["nome"]
-        if "foto_base64" in dados_atualizar:
-            st.session_state['foto_base64'] = dados_atualizar["foto_base64"]
-
-        mostrar_popup("Perfil atualizado com sucesso!")
-        st.rerun()
-
-    # ==========================================================
-    # TROCA DE E-MAIL (com confirmação por link, feita à parte
-    # do formulário principal porque o e-mail é usado no login)
-    # ==========================================================
-    st.markdown("---")
-    st.subheader("📧 Trocar e-mail de login")
-
-    email_pendente = dados_usuario.get("novo_email_pendente")
-    if email_pendente:
-        st.info(f"⏳ Aguardando confirmação para: **{email_pendente}**. Verifique a caixa de entrada (e o spam) desse e-mail.")
-        if st.button("Cancelar troca de e-mail pendente"):
-            supabase.table("usuarios").update({
-                "novo_email_pendente": None, "token_troca_email": None
-            }).eq("id", usuario_id).execute()
-            mostrar_popup("Troca de e-mail cancelada.")
-            st.rerun()
-    else:
-        with st.form("form_trocar_email"):
-            novo_email_desejado = st.text_input("Novo e-mail")
-            enviar_confirmacao = st.form_submit_button("Enviar link de confirmação")
-
-        if enviar_confirmacao:
-            novo_email_desejado = novo_email_desejado.strip().lower()
-            if not novo_email_desejado or not re.match(REGEX_EMAIL, novo_email_desejado):
-                mostrar_popup("Informe um e-mail válido.", tipo="erro")
-            elif novo_email_desejado == dados_usuario['email'].strip().lower():
-                mostrar_popup("Esse já é o seu e-mail atual.", tipo="erro")
+            modulos_marcados = []
+            if perfil_escolhido == "operador":
+                st.markdown("**Páginas que esse Operador pode acessar (além do PDV):**")
+                for chave_modulo, label_modulo in MODULOS_EXTRAS_DISPONIVEIS:
+                    if st.checkbox(label_modulo, key=f"novo_membro_modulo_{chave_modulo}"):
+                        modulos_marcados.append(chave_modulo)
             else:
-                email_existente = supabase.table("usuarios").select("id") \
-                    .eq("email", novo_email_desejado).execute()
+                st.info("Gerente já acessa todas as páginas do sistema automaticamente.")
+
+            cadastrar = st.form_submit_button("Cadastrar Membro")
+
+        if cadastrar:
+            senha_ok, msg_senha_erro = validar_senha_forte(senha_membro)
+            if not nome_membro.strip() or not email_membro.strip():
+                mostrar_popup("Preencha nome e e-mail.", tipo="erro")
+            elif not senha_ok:
+                mostrar_popup(msg_senha_erro, tipo="erro")
+            else:
+                email_existente = supabase.table("usuarios").select("id").eq("email", email_membro.strip()).execute()
                 if email_existente.data:
                     mostrar_popup("Já existe uma conta com esse e-mail.", tipo="erro")
                 else:
-                    token_troca = secrets.token_urlsafe(24)
-                    supabase.table("usuarios").update({
-                        "novo_email_pendente": novo_email_desejado,
-                        "token_troca_email": token_troca
-                    }).eq("id", usuario_id).execute()
-                    if enviar_email_troca_confirmacao(novo_email_desejado, dados_usuario['nome'], token_troca):
-                        mostrar_popup(f"Enviamos um link de confirmação para {novo_email_desejado}. Clique nele pra concluir a troca.")
+                    supabase.table("usuarios").insert({
+                        "empresa_id": emp_id,
+                        "nome": nome_membro.strip(),
+                        "email": email_membro.strip(),
+                        "senha_hash": senha_membro,
+                        "perfil": perfil_escolhido,
+                        "cargo": cargo_escolhido,
+                        "permissoes_extras": modulos_marcados,
+                        "ativo": True,
+                        "email_confirmado": True,
+                    }).execute()
+                    mostrar_popup(f"{nome_membro} cadastrado(a) com sucesso como {cargo_escolhido}!")
                     st.rerun()
+
+    with tab_lista:
+        membros_resp = supabase.table("usuarios").select("id, nome, email, perfil, ativo, cargo, permissoes_extras") \
+            .eq("empresa_id", emp_id).in_("perfil", ["operador", "gerente"]).order("nome").execute()
+        membros = membros_resp.data or []
+
+        if not membros:
+            st.info("Nenhum operador ou gerente cadastrado ainda. Use a aba 'Cadastrar Membro'.")
+            return
+
+        for m in membros:
+            icone_perfil = "🧑‍💼" if m['perfil'] == 'gerente' else "🧾"
+            status_txt = "🟢 Ativo" if m['ativo'] else "🔴 Bloqueado"
+            cargo_atual = m.get('cargo') or m['perfil'].capitalize()
+            with st.expander(f"{icone_perfil} {m['nome']} — {cargo_atual} — {status_txt}"):
+                st.write(f"**E-mail:** {m['email']}")
+
+                if m['perfil'] == 'operador':
+                    lista_cargos = CARGOS_OPERADOR
+                    idx_cargo = lista_cargos.index(cargo_atual) if cargo_atual in lista_cargos else 0
+                    novo_cargo = st.selectbox(
+                        "Cargo", lista_cargos, index=idx_cargo, key=f"cargo_membro_{m['id']}"
+                    )
+                    permissoes_atuais = m.get('permissoes_extras') or []
+                    st.write("**Páginas liberadas (além do PDV):**")
+                    novos_modulos_marcados = []
+                    for chave_modulo, label_modulo in MODULOS_EXTRAS_DISPONIVEIS:
+                        marcado = st.checkbox(
+                            label_modulo,
+                            value=chave_modulo in permissoes_atuais,
+                            key=f"modulo_membro_{m['id']}_{chave_modulo}"
+                        )
+                        if marcado:
+                            novos_modulos_marcados.append(chave_modulo)
+                    if st.button("Salvar cargo/permissões", key=f"salvar_perm_{m['id']}"):
+                        supabase.table("usuarios").update({
+                            "cargo": novo_cargo,
+                            "permissoes_extras": novos_modulos_marcados
+                        }).eq("id", m['id']).execute()
+                        mostrar_popup("Cargo e permissões atualizados!")
+                        st.rerun()
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("Bloquear" if m['ativo'] else "Desbloquear", key=f"toggle_membro_{m['id']}"):
+                        supabase.table("usuarios").update({"ativo": not m['ativo']}).eq("id", m['id']).execute()
+                        st.rerun()
+                with col2:
+                    nova_senha = st.text_input("Nova senha", key=f"nova_senha_membro_{m['id']}", type="password")
+                    st.caption(REQUISITOS_SENHA_TEXTO)
+                    if st.button("Redefinir Senha", key=f"btn_redefinir_{m['id']}") and nova_senha:
+                        senha_ok_membro, msg_senha_membro = validar_senha_forte(nova_senha)
+                        if not senha_ok_membro:
+                            mostrar_popup(msg_senha_membro, tipo="erro")
+                        else:
+                            supabase.table("usuarios").update({"senha_hash": nova_senha}).eq("id", m['id']).execute()
+                            mostrar_popup("Senha redefinida!")

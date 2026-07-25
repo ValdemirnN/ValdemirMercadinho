@@ -29,6 +29,7 @@ from financeiro import tela_financeiro
 from dashboard import tela_dashboard
 from admin import tela_gestao_assinantes
 from equipe import tela_equipe
+from perfil import tela_meu_perfil
 
 # ==============================================================
 # 1. SESSÃO / LOGIN
@@ -44,11 +45,35 @@ if not st.session_state['logado']:
 nome_usuario = st.session_state['nome_usuario']
 perfil = st.session_state['perfil']
 cargo = st.session_state.get('cargo') or perfil.capitalize()
+foto_base64_usuario = st.session_state.get('foto_base64')
 
+if foto_base64_usuario:
+    avatar_html = f"""<img src="data:image/jpeg;base64,{foto_base64_usuario}"
+        style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid #3B82F6;" />"""
+else:
+    avatar_html = """<div style="width:64px;height:64px;border-radius:50%;background-color:#5F6368;
+        display:flex;align-items:center;justify-content:center;border:2px solid #3B82F6;">
+        <svg viewBox="0 0 24 24" width="36" height="36" fill="white">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6v1H4v-1z"/>
+        </svg>
+    </div>"""
+
+st.sidebar.markdown(avatar_html, unsafe_allow_html=True)
 st.sidebar.markdown(f"### 👋 Olá, {nome_usuario}")
 st.sidebar.caption(f"Cargo: {cargo}")
+if st.sidebar.button("👤 Meu Perfil", use_container_width=True):
+    st.session_state['ver_meu_perfil'] = True
+    st.rerun()
 st.sidebar.button("Sair / Desconectar", on_click=fazer_logout)
 st.sidebar.markdown("---")
+
+if st.session_state.get('ver_meu_perfil'):
+    if st.button("⬅️ Voltar"):
+        st.session_state['ver_meu_perfil'] = False
+        st.rerun()
+    tela_meu_perfil()
+    st.stop()
 
 # ---- Menu segmentado por perfil ----
 if perfil == "operador":

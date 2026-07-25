@@ -162,6 +162,71 @@ def confirmar_troca_email_por_link():
         pass
 
 
+def enviar_email_redefinicao_senha(destinatario, nome_destinatario, token):
+    link_redefinicao = f"{URL_BASE_SISTEMA}/?redefinir_senha={token}"
+    corpo = (
+        f"Olá {nome_destinatario},\n\n"
+        f"Recebemos um pedido para redefinir a senha da sua conta no Sistema Mercadinho.\n"
+        f"Para criar uma nova senha, clique no link abaixo:\n{link_redefinicao}\n\n"
+        f"A nova senha precisa ter no mínimo 7 caracteres.\n\n"
+        f"Se você não pediu essa redefinição, ignore este e-mail — sua senha atual continua valendo."
+    )
+    msg = MIMEText(corpo)
+    msg['Subject'] = "Redefinição de senha - Sistema Mercadinho"
+    msg['From'] = GMAIL_REMETENTE
+    msg['To'] = destinatario
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15) as servidor:
+            servidor.login(GMAIL_REMETENTE, GMAIL_SENHA_APP)
+            servidor.sendmail(GMAIL_REMETENTE, destinatario, msg.as_string())
+        return True
+    except Exception as e:
+        mostrar_popup(f"Erro ao enviar e-mail de redefinição: {e}", tipo="erro")
+        return False
+
+
+def tela_redefinir_senha():
+    token_redefinicao = st.query_params.get("redefinir_senha")
+    st.write("")
+    col_esq, col_meio, col_dir = st.columns([1, 1.2, 1])
+    with col_meio:
+        st.title("🔑 Redefinir Senha")
+
+        resultado = supabase.table("usuarios").select("id, nome") \
+            .eq("token_redefinicao_senha", token_redefinicao).execute()
+
+        if not resultado.data:
+            st.error("Link inválido ou já utilizado. Peça um novo link na tela de login.")
+            if st.button("⬅️ Voltar para o login"):
+                st.query_params.clear()
+                st.rerun()
+            st.stop()
+
+        usuario_redefinir = resultado.data[0]
+        st.success(f"Olá, {usuario_redefinir['nome']}! Defina sua nova senha abaixo.")
+        st.caption("A senha precisa ter no mínimo 7 caracteres.")
+
+        with st.form("form_nova_senha_redefinicao"):
+            nova_senha1 = st.text_input("Nova senha", type="password")
+            nova_senha2 = st.text_input("Confirme a nova senha", type="password")
+            confirmar_btn = st.form_submit_button("Salvar nova senha", type="primary", use_container_width=True)
+
+        if confirmar_btn:
+            if nova_senha1 != nova_senha2:
+                mostrar_popup("As senhas não coincidem.", tipo="erro")
+            elif len(nova_senha1) < 7:
+                mostrar_popup("A senha precisa ter no mínimo 7 caracteres.", tipo="erro")
+            else:
+                supabase.table("usuarios").update({
+                    "senha_hash": nova_senha1,
+                    "token_redefinicao_senha": None
+                }).eq("id", usuario_redefinir['id']).execute()
+                st.query_params.clear()
+                st.session_state['senha_redefinida_sucesso'] = True
+                st.rerun()
+    st.stop()
+
+
 def confirmar_email_por_link():
     try:
         token_param = st.query_params.get("confirmar_email")
@@ -362,6 +427,10 @@ def tela_login_e_cadastro():
         st.error(f"⚠️ {st.session_state['erro_confirmacao_msg']}")
         del st.session_state['erro_confirmacao_msg']
 
+    if st.session_state.get('senha_redefinida_sucesso'):
+        st.success("✅ Senha redefinida com sucesso! Faça login com a nova senha.")
+        del st.session_state['senha_redefinida_sucesso']
+
     st.write("")
     col_hero, col_form = st.columns([1.15, 1])
 
@@ -425,62 +494,33 @@ def tela_login_e_cadastro():
                 mostrar_popup(f"Erro ao tentar logar: {e}", tipo="erro")
 
         st.markdown("---")
-        st.caption("🆕 Novo mercadinho? Crie a conta do dono abaixo. Operadores e gerentes são cadastrados depois, dentro do sistema, na aba **Equipe**.")
-        with st.expander("🆕 Ainda não tem conta? Criar conta do Dono"):
-            with st.form("form_criar_conta"):
-                nome_empresa_cadastro = st.text_input("Nome do Mercadinho")
-                nome_usuario_cadastro = st.text_input("Seu Nome")
-                email_cadastro = st.text_input("E-mail")
-                senha_cadastro = st.text_input("Senha", type="password")
-                senha_cadastro_confirma = st.text_input("Confirme a Senha", type="password")
-                criar_conta_btn = st.form_submit_button("Criar Conta", use_container_width=True)
+        with st.expander("🔑 Esqueceu a senha? Clique aqui"):
+            with st.form("form_esqueci_senha"):
+                email_recuperar = st.text_input("Digite seu e-mail cadastrado")
+                enviar_recuperacao = st.form_submit_button("Enviar link de redefinição", use_container_width=True)
 
-            if criar_conta_btn:
-                if not nome_empresa_cadastro.strip() or not nome_usuario_cadastro.strip() or not email_cadastro.strip():
-                    mostrar_popup("Preencha todos os campos.", tipo="erro")
-                elif senha_cadastro != senha_cadastro_confirma:
-                    mostrar_popup("As senhas não coincidem.", tipo="erro")
-                elif len(senha_cadastro) < 7:
-                    mostrar_popup("A senha precisa ter no mínimo 7 caracteres.", tipo="erro")
+            if enviar_recuperacao:
+                email_recuperar = email_recuperar.strip()
+                if not email_recuperar:
+                    mostrar_popup("Informe seu e-mail.", tipo="erro")
                 else:
                     try:
-                        email_existente = supabase.table("usuarios").select("id").eq("email", email_cadastro).execute()
-                    except Exception as e_check:
-                        email_existente = None
-                        mostrar_popup(f"Erro ao consultar e-mail: {e_check}", tipo="erro")
+                        resultado_busca = supabase.table("usuarios").select("id, nome") \
+                            .eq("email", email_recuperar).execute()
+                    except Exception as e_busca:
+                        resultado_busca = None
+                        mostrar_popup(f"Erro ao consultar e-mail: {e_busca}", tipo="erro")
 
-                    if email_existente and email_existente.data:
-                        mostrar_popup("Já existe uma conta com esse e-mail.", tipo="erro")
-                    elif email_existente is not None:
-                        try:
-                            plano_padrao = supabase.table("planos").select("id").order("id").limit(1).execute()
-                        except Exception as e_plano:
-                            plano_padrao = None
-                            mostrar_popup(f"Erro ao consultar planos: {e_plano}", tipo="erro")
+                    if resultado_busca is not None:
+                        if not resultado_busca.data:
+                            mostrar_popup("Não encontramos uma conta com esse e-mail.", tipo="erro")
+                        else:
+                            usuario_recuperar = resultado_busca.data[0]
+                            token_redefinicao = secrets.token_urlsafe(24)
+                            supabase.table("usuarios").update(
+                                {"token_redefinicao_senha": token_redefinicao}
+                            ).eq("id", usuario_recuperar['id']).execute()
 
-                        if plano_padrao is not None and not plano_padrao.data:
-                            mostrar_popup("Nenhum plano cadastrado no banco de dados. Rode a migração de assinaturas.", tipo="erro")
-                        elif plano_padrao is not None:
-                            try:
-                                nova_empresa = supabase.table("empresas").insert({"nome_fantasia": nome_empresa_cadastro}).execute()
-                                empresa_id_criada = nova_empresa.data[0]['id']
-                                hoje_cadastro = datetime.now().strftime("%Y-%m-%d")
-                                supabase.table("assinaturas").insert({
-                                    "empresa_id": empresa_id_criada, "plano_id": plano_padrao.data[0]['id'],
-                                    "data_inicio": hoje_cadastro, "data_vencimento": hoje_cadastro
-                                }).execute()
-                                token_confirmacao_novo = secrets.token_urlsafe(24)
-                                supabase.table("usuarios").insert({
-                                    "empresa_id": empresa_id_criada, "nome": nome_usuario_cadastro,
-                                    "email": email_cadastro, "senha_hash": senha_cadastro, "perfil": "dono",
-                                    "ativo": False, "email_confirmado": False, "token_confirmacao": token_confirmacao_novo
-                                }).execute()
-
-                                email_enviado = enviar_email_confirmacao(email_cadastro, nome_usuario_cadastro, token_confirmacao_novo)
-                                if email_enviado:
-                                    mostrar_popup("Conta criada! Enviamos um e-mail de confirmação — clique no link para prosseguir com o pagamento.")
-                                else:
-                                    mostrar_popup("Conta criada, mas houve falha ao enviar o e-mail. Veja o erro acima e verifique as credenciais SMTP.", tipo="erro")
-                            except Exception as e_criar:
-                                mostrar_popup(f"Erro ao criar conta: {e_criar}", tipo="erro")
+                            if enviar_email_redefinicao_senha(email_recuperar, usuario_recuperar['nome'], token_redefinicao):
+                                mostrar_popup("Enviamos um link de redefinição de senha para o seu e-mail. Confira também o spam.")
     st.stop()

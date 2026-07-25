@@ -36,6 +36,10 @@ from perfil import tela_meu_perfil
 # ==============================================================
 inicializar_sessao()
 
+if st.session_state.get('email_trocado_sucesso'):
+    st.success(f"✅ E-mail alterado com sucesso para **{st.session_state['email_trocado_sucesso']}**! Use esse e-mail no próximo login.")
+    del st.session_state['email_trocado_sucesso']
+
 if not st.session_state['logado']:
     tela_login_e_cadastro()
 
